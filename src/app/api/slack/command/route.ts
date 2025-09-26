@@ -3,6 +3,14 @@ import { verifySlackRequest, parseSlackCommand, formatSlackAnswer } from '@/lib/
 import { hybridRetrieval } from '@/lib/retrieval'
 import { generateAnswer } from '@/lib/answer'
 
+export async function GET(request: NextRequest) {
+  return NextResponse.json({
+    error: 'Slack slash commands should use POST method, not GET. Check your Slack app configuration.',
+    received_method: 'GET',
+    expected_method: 'POST'
+  }, { status: 405 })
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.text()
   const timestamp = request.headers.get('x-slack-request-timestamp')
