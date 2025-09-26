@@ -12,7 +12,7 @@ pnpm install
 2. Configure environment:
 ```bash
 cp .env.example .env.local
-# Fill in your credentials
+# Fill in your credentials including UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN
 ```
 
 3. Setup database:
