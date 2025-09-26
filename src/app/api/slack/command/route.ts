@@ -38,40 +38,52 @@ async function processCommand(command: {
   responseUrl: string
   triggerId: string
 }) {
-  const chunks = await hybridRetrieval(
-    command.text,
-    {
-      teamId: command.teamId,
-      userId: command.userId,
-      channelId: command.channelId
-    },
-    12
-  )
+  try {
+    const chunks = await hybridRetrieval(
+      command.text,
+      {
+        teamId: command.teamId,
+        userId: command.userId,
+        channelId: command.channelId
+      },
+      12
+    )
 
-  if (chunks.length === 0) {
+    if (chunks.length === 0) {
+      await fetch(command.responseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          response_type: 'in_channel',
+          text: 'No relevant information found for your question. Try rephrasing or check if you have access to the relevant channels.'
+        })
+      })
+      return
+    }
+
+    const { answer, sources } = await generateAnswer(command.text, chunks)
+    const slackMessage = formatSlackAnswer(answer, sources)
+
+    await fetch(command.responseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        response_type: 'in_channel',
+        ...slackMessage
+      })
+    })
+  } catch (error) {
+    console.error('Error in processCommand:', error)
+    // Send fallback response
     await fetch(command.responseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         response_type: 'ephemeral',
-        text: 'No relevant information found for your question. Try rephrasing or check if you have access to the relevant channels.'
+        text: 'Sorry, there was an error processing your request. Please try again.'
       })
     })
-    return
   }
-
-  const { answer, sources } = await generateAnswer(command.text, chunks)
-
-  const slackMessage = formatSlackAnswer(answer, sources)
-
-  await fetch(command.responseUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      response_type: 'in_channel',
-      ...slackMessage
-    })
-  })
 }
 
 async function sendErrorResponse(responseUrl: string) {
