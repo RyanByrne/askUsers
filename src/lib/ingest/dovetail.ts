@@ -140,7 +140,7 @@ export async function ingestDovetailData(
       throw new Error('DOVETAIL_API_KEY environment variable is required')
     }
 
-    let targetProjectIds = projectIds
+    let targetProjectIds: string[] = projectIds || []
 
     // If no specific project IDs provided or wildcard, fetch all projects
     if (!projectIds || projectIds.includes('*')) {
