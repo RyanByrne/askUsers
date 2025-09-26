@@ -9,25 +9,39 @@ export interface Principals {
 export async function getPermittedDocumentIds(
   principals: Principals
 ): Promise<string[]> {
-  const conditions = [
-    `("principalType" = 'slack_team' AND "principalId" = $1)`,
-    `("principalType" = 'slack_team' AND "principalId" = '*')`,
-    `("principalType" = 'slack_user' AND "principalId" = $2)`
+  const whereConditions = [
+    {
+      principalType: 'slack_team',
+      principalId: principals.teamId
+    },
+    {
+      principalType: 'slack_team',
+      principalId: '*'
+    },
+    {
+      principalType: 'slack_user',
+      principalId: principals.userId
+    }
   ]
-  const params = [principals.teamId, principals.userId]
 
   if (principals.channelId) {
-    conditions.push(`("principalType" = 'slack_channel' AND "principalId" = $3)`)
-    params.push(principals.channelId)
+    whereConditions.push({
+      principalType: 'slack_channel',
+      principalId: principals.channelId
+    })
   }
 
-  const result = await prisma.$queryRawUnsafe<{ documentId: string }[]>(`
-    SELECT DISTINCT "documentId"::text
-    FROM "Permission"
-    WHERE ${conditions.join(' OR ')}
-  `, ...params)
+  const permissions = await prisma.permission.findMany({
+    where: {
+      OR: whereConditions
+    },
+    select: {
+      documentId: true
+    },
+    distinct: ['documentId']
+  })
 
-  return result.map(r => r.documentId)
+  return permissions.map(p => p.documentId)
 }
 
 export async function setDocumentPermissions(
