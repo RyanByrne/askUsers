@@ -2,6 +2,8 @@
 
 Production-ready Slack bot that answers questions with grounded, cited summaries from Dovetail and Slack channels.
 
+⚡ **Latest Update**: Fixed SQL query issues and Slack command error handling for production deployment.
+
 ## Setup
 
 1. Install dependencies:
