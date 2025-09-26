@@ -46,6 +46,7 @@ async function seed() {
     }
   })
 
+  // Add permissions for wildcard and specific teams
   await prisma.permission.upsert({
     where: {
       documentId_principalType_principalId: {
@@ -58,6 +59,23 @@ async function seed() {
       documentId: dovetailDoc.id,
       principalType: 'slack_team',
       principalId: '*'
+    },
+    update: {}
+  })
+
+  // Add permission for your specific team
+  await prisma.permission.upsert({
+    where: {
+      documentId_principalType_principalId: {
+        documentId: dovetailDoc.id,
+        principalType: 'slack_team',
+        principalId: 'T045L3H0TFT'
+      }
+    },
+    create: {
+      documentId: dovetailDoc.id,
+      principalType: 'slack_team',
+      principalId: 'T045L3H0TFT'
     },
     update: {}
   })
@@ -111,6 +129,7 @@ async function seed() {
     }
   })
 
+  // Add channel permission
   await prisma.permission.upsert({
     where: {
       documentId_principalType_principalId: {
@@ -123,6 +142,23 @@ async function seed() {
       documentId: slackDoc.id,
       principalType: 'slack_channel',
       principalId: 'C001'
+    },
+    update: {}
+  })
+
+  // Add team permission for Slack doc
+  await prisma.permission.upsert({
+    where: {
+      documentId_principalType_principalId: {
+        documentId: slackDoc.id,
+        principalType: 'slack_team',
+        principalId: 'T045L3H0TFT'
+      }
+    },
+    create: {
+      documentId: slackDoc.id,
+      principalType: 'slack_team',
+      principalId: 'T045L3H0TFT'
     },
     update: {}
   })
