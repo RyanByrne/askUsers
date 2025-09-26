@@ -5,10 +5,10 @@ import { generateAnswer } from '@/lib/answer'
 
 export async function POST(request: NextRequest) {
   const body = await request.text()
-  const timestamp = request.headers.get('x-slack-request-timestamp')!
-  const signature = request.headers.get('x-slack-signature')!
+  const timestamp = request.headers.get('x-slack-request-timestamp')
+  const signature = request.headers.get('x-slack-signature')
 
-  if (!verifySlackRequest(body, timestamp, signature)) {
+  if (!timestamp || !signature || !verifySlackRequest(body, timestamp, signature)) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   }
 
