@@ -10,18 +10,19 @@ export async function getPermittedDocumentIds(
   principals: Principals
 ): Promise<string[]> {
   const conditions = [
-    `"principalType" = 'slack_team' AND "principalId" = $1`,
-    `"principalType" = 'slack_user' AND "principalId" = $2`
+    `("principalType" = 'slack_team' AND "principalId" = $1)`,
+    `("principalType" = 'slack_team' AND "principalId" = '*')`,
+    `("principalType" = 'slack_user' AND "principalId" = $2)`
   ]
   const params = [principals.teamId, principals.userId]
 
   if (principals.channelId) {
-    conditions.push(`"principalType" = 'slack_channel' AND "principalId" = $3`)
+    conditions.push(`("principalType" = 'slack_channel' AND "principalId" = $3)`)
     params.push(principals.channelId)
   }
 
   const result = await prisma.$queryRawUnsafe<{ documentId: string }[]>(`
-    SELECT DISTINCT "documentId"
+    SELECT DISTINCT "documentId"::text
     FROM "Permission"
     WHERE ${conditions.join(' OR ')}
   `, ...params)
