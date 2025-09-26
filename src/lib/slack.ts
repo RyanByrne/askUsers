@@ -32,6 +32,9 @@ export function verifySlackRequest(
     .digest('hex')
 
   try {
+    if (!signature) {
+      return false
+    }
     return crypto.timingSafeEqual(
       Buffer.from(hash, 'utf8'),
       Buffer.from(signature, 'utf8')
