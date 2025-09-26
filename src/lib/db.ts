@@ -34,7 +34,15 @@ export async function executeRaw<T = unknown>(
   query: string,
   params: unknown[] = []
 ): Promise<T[]> {
-  return prisma.$queryRawUnsafe<T[]>(query, ...params)
+  const client = process.env.NODE_ENV === 'production' ? createPrismaClient() : prisma
+
+  try {
+    return await client.$queryRawUnsafe<T[]>(query, ...params)
+  } finally {
+    if (process.env.NODE_ENV === 'production') {
+      await client.$disconnect()
+    }
+  }
 }
 
 export async function bulkInsertChunks(
@@ -48,19 +56,27 @@ export async function bulkInsertChunks(
 ) {
   if (chunks.length === 0) return
 
-  const values = chunks
-    .map(
-      (c) =>
-        `(gen_random_uuid(), '${c.documentId}', ${c.ordinal}, '${c.text.replace(/'/g, "''")}', '[${c.embedding.join(',')}]'::vector, '${JSON.stringify(c.meta || {})}'::jsonb)`
-    )
-    .join(',')
+  const client = process.env.NODE_ENV === 'production' ? createPrismaClient() : prisma
 
-  await prisma.$executeRawUnsafe(`
-    INSERT INTO "Chunk" (id, "documentId", ordinal, text, embedding, meta)
-    VALUES ${values}
-    ON CONFLICT ("documentId", ordinal) DO UPDATE SET
-      text = EXCLUDED.text,
-      embedding = EXCLUDED.embedding,
-      meta = EXCLUDED.meta
-  `)
+  try {
+    const values = chunks
+      .map(
+        (c) =>
+          `(gen_random_uuid(), '${c.documentId}', ${c.ordinal}, '${c.text.replace(/'/g, "''")}', '[${c.embedding.join(',')}]'::vector, '${JSON.stringify(c.meta || {})}'::jsonb)`
+      )
+      .join(',')
+
+    await client.$executeRawUnsafe(`
+      INSERT INTO "Chunk" (id, "documentId", ordinal, text, embedding, meta)
+      VALUES ${values}
+      ON CONFLICT ("documentId", ordinal) DO UPDATE SET
+        text = EXCLUDED.text,
+        embedding = EXCLUDED.embedding,
+        meta = EXCLUDED.meta
+    `)
+  } finally {
+    if (process.env.NODE_ENV === 'production') {
+      await client.$disconnect()
+    }
+  }
 }
