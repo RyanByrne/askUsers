@@ -23,29 +23,25 @@ export async function POST(request: NextRequest) {
   const params = new URLSearchParams(body)
   const command = parseSlackCommand(params)
 
-  setTimeout(async () => {
-    try {
-      console.log('Starting processCommand for:', command.text)
-      await processCommand(command)
-      console.log('processCommand completed successfully')
-    } catch (error) {
-      console.error('Error processing command:', error)
-      // Send error details directly to user
-      await fetch(command.responseUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          response_type: 'ephemeral',
-          text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
-        })
-      })
-    }
-  }, 0)
+  // Process synchronously to capture all logs and errors
+  try {
+    console.log('Starting processCommand for:', command.text)
+    await processCommand(command)
+    console.log('processCommand completed successfully')
 
-  return NextResponse.json({
-    response_type: 'ephemeral',
-    text: '🔍 Working on your research question...'
-  })
+    return NextResponse.json({
+      response_type: 'ephemeral',
+      text: '✅ Question processed successfully! Check the channel for your answer.'
+    })
+  } catch (error) {
+    console.error('Error processing command:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+    return NextResponse.json({
+      response_type: 'ephemeral',
+      text: `❌ Error: ${errorMessage}`
+    })
+  }
 }
 
 async function processCommand(command: {
