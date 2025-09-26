@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ingestSlackChannel } from '@/lib/ingest/slack'
+import { ingestSlackChannel, ingestAllSlackChannels } from '@/lib/ingest/slack'
 import { getAllowlistedChannels } from '@/lib/permissions'
 
 export async function POST(request: NextRequest) {
@@ -10,27 +10,41 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { channelIds, monthsBack = 3, teamId } = body
+    const { channelIds, monthsBack = 3, teamId, syncAll = false } = body
 
-    if (!channelIds || !Array.isArray(channelIds)) {
+    const team = teamId || process.env.SLACK_DEFAULT_TEAM_ID
+    if (!team) {
       return NextResponse.json(
-        { error: 'channelIds array is required' },
+        { error: 'teamId is required (set SLACK_DEFAULT_TEAM_ID or provide in request)' },
         { status: 400 }
       )
     }
 
-    const team = teamId || process.env.SLACK_DEFAULT_TEAM_ID || 'T000000'
+    if (syncAll) {
+      // Sync all channels based on allowlist
+      await ingestAllSlackChannels(team, monthsBack)
+      return NextResponse.json({
+        success: true,
+        message: 'Synced all allowed channels'
+      })
+    } else if (channelIds && Array.isArray(channelIds)) {
+      // Sync specific channels
+      const syncPromises = channelIds.map(channelId =>
+        ingestSlackChannel(channelId, team, monthsBack)
+      )
 
-    const syncPromises = channelIds.map(channelId =>
-      ingestSlackChannel(channelId, team, monthsBack)
-    )
+      await Promise.all(syncPromises)
 
-    await Promise.all(syncPromises)
-
-    return NextResponse.json({
-      success: true,
-      message: `Synced ${channelIds.length} channels`
-    })
+      return NextResponse.json({
+        success: true,
+        message: `Synced ${channelIds.length} channels`
+      })
+    } else {
+      return NextResponse.json(
+        { error: 'Either set syncAll: true or provide channelIds array' },
+        { status: 400 }
+      )
+    }
   } catch (error) {
     console.error('Error in Slack sync:', error)
     return NextResponse.json(
@@ -46,25 +60,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const allowlistedChannels = getAllowlistedChannels()
-  if (allowlistedChannels.length === 0) {
+  const teamId = process.env.SLACK_DEFAULT_TEAM_ID
+  if (!teamId) {
     return NextResponse.json({
-      error: 'No allowlisted channels configured'
+      error: 'SLACK_DEFAULT_TEAM_ID not configured'
     }, { status: 400 })
   }
 
-  const teamId = process.env.SLACK_DEFAULT_TEAM_ID || 'T000000'
-
   try {
-    const syncPromises = allowlistedChannels.map(channelId =>
-      ingestSlackChannel(channelId, teamId, 3)
-    )
-
-    await Promise.all(syncPromises)
+    // Use the new ingestAllSlackChannels function for cron jobs
+    await ingestAllSlackChannels(teamId, 3)
 
     return NextResponse.json({
       success: true,
-      message: `Synced ${allowlistedChannels.length} channels`
+      message: 'Synced all allowed channels'
     })
   } catch (error) {
     console.error('Cron sync error:', error)

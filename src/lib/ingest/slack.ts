@@ -12,6 +12,84 @@ interface SlackMessage {
   blocks?: any[]
 }
 
+interface SlackChannel {
+  id: string
+  name: string
+  is_channel: boolean
+  is_group: boolean
+  is_im: boolean
+  is_mpim: boolean
+  is_private: boolean
+  is_archived: boolean
+  is_general: boolean
+  is_shared: boolean
+  is_org_shared: boolean
+  is_member: boolean
+  purpose?: {
+    value: string
+  }
+  topic?: {
+    value: string
+  }
+}
+
+export async function fetchSlackChannels(teamId: string): Promise<SlackChannel[]> {
+  console.log(`Fetching all Slack channels for team ${teamId}`)
+
+  const client = getSlackClient(teamId)
+  const allChannels: SlackChannel[] = []
+  let cursor: string | undefined
+
+  // Fetch public channels
+  while (true) {
+    const result = await client.conversations.list({
+      types: 'public_channel,private_channel',
+      exclude_archived: true,
+      limit: 200,
+      cursor
+    })
+
+    const channels = (result.channels || []) as SlackChannel[]
+    allChannels.push(...channels.filter(ch => ch.is_member)) // Only channels the bot is a member of
+
+    if (!result.response_metadata?.next_cursor) break
+    cursor = result.response_metadata.next_cursor
+  }
+
+  console.log(`Found ${allChannels.length} accessible channels`)
+  return allChannels
+}
+
+export async function ingestAllSlackChannels(teamId: string, monthsBack = 3): Promise<void> {
+  console.log(`Starting full Slack ingestion for team ${teamId}`)
+
+  const channels = await fetchSlackChannels(teamId)
+  const allowlistedChannels = process.env.ALLOWLIST_SLACK_CHANNELS?.split(',').map(c => c.trim()) || []
+
+  // Filter channels based on allowlist
+  const channelsToIngest = allowlistedChannels.includes('*')
+    ? channels
+    : channels.filter(ch =>
+        allowlistedChannels.includes(ch.id) ||
+        allowlistedChannels.includes(ch.name) ||
+        allowlistedChannels.includes(`#${ch.name}`)
+      )
+
+  console.log(`Ingesting ${channelsToIngest.length} channels: ${channelsToIngest.map(c => c.name).join(', ')}`)
+
+  for (const channel of channelsToIngest) {
+    try {
+      console.log(`Processing channel: #${channel.name} (${channel.id})`)
+      await ingestSlackChannel(channel.id, teamId, monthsBack)
+    } catch (error) {
+      console.error(`Error processing channel ${channel.name}:`, error)
+      // Continue with other channels
+    }
+  }
+
+  console.log(`Completed Slack ingestion for ${channelsToIngest.length} channels`)
+}
+
 export async function ingestSlackChannel(
   channelId: string,
   teamId: string,

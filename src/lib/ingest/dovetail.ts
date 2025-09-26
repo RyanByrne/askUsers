@@ -2,6 +2,27 @@ import { prisma } from '../db'
 import { embedBatch } from '../embeddings'
 import { bulkInsertChunks } from '../db'
 
+interface DovetailProject {
+  id: string
+  name: string
+  description?: string
+  url: string
+  created_at: string
+  updated_at: string
+}
+
+interface DovetailDataItem {
+  id: string
+  title: string
+  description?: string
+  url: string
+  created_at: string
+  updated_at: string
+  content?: string
+  transcript?: string
+  type: 'interview' | 'note' | 'survey' | 'document'
+}
+
 interface DovetailItem {
   id: string
   title: string
@@ -13,24 +34,97 @@ interface DovetailItem {
   highlights?: string[]
 }
 
+async function fetchDovetailProjects(apiKey: string): Promise<DovetailProject[]> {
+  console.log('Fetching all Dovetail projects')
+
+  const response = await fetch('https://dovetail.com/api/v1/projects', {
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    }
+  })
+
+  if (!response.ok) {
+    throw new Error(`Dovetail API error: ${response.status} ${response.statusText}`)
+  }
+
+  const data = await response.json()
+  return data.data || data // Handle different response formats
+}
+
+async function fetchDovetailProjectData(projectId: string, apiKey: string): Promise<DovetailDataItem[]> {
+  console.log(`Fetching data for Dovetail project ${projectId}`)
+
+  const response = await fetch(`https://dovetail.com/api/v1/data?project_id=${projectId}`, {
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    }
+  })
+
+  if (!response.ok) {
+    throw new Error(`Dovetail API error for project ${projectId}: ${response.status} ${response.statusText}`)
+  }
+
+  const data = await response.json()
+  return data.data || data
+}
+
+async function fetchDovetailDataDetails(dataId: string, apiKey: string): Promise<DovetailDataItem> {
+  console.log(`Fetching details for Dovetail data item ${dataId}`)
+
+  const response = await fetch(`https://dovetail.com/api/v1/data/${dataId}`, {
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    }
+  })
+
+  if (!response.ok) {
+    throw new Error(`Dovetail API error for data ${dataId}: ${response.status} ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
 export async function fetchDovetailProjectItems(
   projectId: string,
   apiKey: string
 ): Promise<DovetailItem[]> {
   console.log(`Fetching Dovetail project ${projectId}`)
 
-  return [
-    {
-      id: 'mock-item-1',
-      title: 'User Interview - Agency Owner',
-      url: `https://dovetail.com/projects/${projectId}/items/mock-item-1`,
-      author: 'Research Team',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      content: 'Agency owner discussed commission reconciliation challenges...',
-      highlights: ['commission tracking is manual', 'need automated reconciliation']
+  try {
+    const dataItems = await fetchDovetailProjectData(projectId, apiKey)
+    const items: DovetailItem[] = []
+
+    for (const dataItem of dataItems) {
+      try {
+        // Fetch full details for each data item
+        const fullData = await fetchDovetailDataDetails(dataItem.id, apiKey)
+
+        const content = fullData.transcript || fullData.content || fullData.description || ''
+
+        items.push({
+          id: fullData.id,
+          title: fullData.title,
+          url: fullData.url,
+          author: 'Research Team', // Dovetail doesn't always provide author info
+          createdAt: fullData.created_at,
+          updatedAt: fullData.updated_at,
+          content: content,
+          highlights: [] // We'll extract highlights from notes/insights separately
+        })
+      } catch (error) {
+        console.error(`Error fetching details for data item ${dataItem.id}:`, error)
+        // Continue processing other items
+      }
     }
-  ]
+
+    return items
+  } catch (error) {
+    console.error(`Error fetching project ${projectId}:`, error)
+    return []
+  }
 }
 
 export async function ingestDovetailData(
@@ -40,11 +134,26 @@ export async function ingestDovetailData(
 ) {
   const items: DovetailItem[] = []
 
-  if (mode === 'api' && projectIds) {
+  if (mode === 'api') {
     const apiKey = process.env.DOVETAIL_API_KEY!
-    for (const projectId of projectIds) {
+    if (!apiKey) {
+      throw new Error('DOVETAIL_API_KEY environment variable is required')
+    }
+
+    let targetProjectIds = projectIds
+
+    // If no specific project IDs provided or wildcard, fetch all projects
+    if (!projectIds || projectIds.includes('*')) {
+      console.log('Fetching all Dovetail projects')
+      const allProjects = await fetchDovetailProjects(apiKey)
+      targetProjectIds = allProjects.map(p => p.id)
+      console.log(`Found ${targetProjectIds.length} Dovetail projects`)
+    }
+
+    for (const projectId of targetProjectIds) {
       const projectItems = await fetchDovetailProjectItems(projectId, apiKey)
       items.push(...projectItems)
+      console.log(`Ingested ${projectItems.length} items from project ${projectId}`)
     }
   } else if (mode === 'json' && payload) {
     items.push(...(Array.isArray(payload) ? payload : [payload]))

@@ -20,14 +20,10 @@ export async function hybridRetrieval(
   principals: { teamId: string; userId: string; channelId?: string },
   limit = 12
 ): Promise<RetrievedChunk[]> {
-  console.log(`hybridRetrieval called with query: "${query}"`)
-
   const permittedDocs = await getPermittedDocumentIds(principals)
-  console.log(`Got ${permittedDocs.length} permitted documents:`, permittedDocs)
   if (permittedDocs.length === 0) return []
 
   const lexicalChunks = await lexicalShortlist(query, permittedDocs, 100)
-  console.log(`Lexical search returned ${lexicalChunks.length} chunks`)
 
   if (lexicalChunks.length === 0) return []
 
@@ -35,7 +31,6 @@ export async function hybridRetrieval(
   const rerankedChunks = await vectorRerank(lexicalChunks, queryEmbedding)
   const dedupedChunks = mmrDedupe(rerankedChunks, limit)
 
-  console.log(`Final retrieval: ${dedupedChunks.length} chunks after rerank and dedup`)
   return dedupedChunks
 }
 
@@ -45,8 +40,6 @@ async function lexicalShortlist(
   limit: number
 ): Promise<RetrievedChunk[]> {
   const cleanQuery = query.replace(/'/g, "''")
-
-  console.log(`lexicalShortlist: query="${cleanQuery}", permittedDocs=${permittedDocIds.length}, limit=${limit}`)
 
   const chunks = await executeRaw<RetrievedChunk>(`
     SELECT DISTINCT ON (c.id)
@@ -74,8 +67,6 @@ async function lexicalShortlist(
     ORDER BY c.id, lex_score DESC
     LIMIT $4
   `, [cleanQuery, `%${cleanQuery}%`, permittedDocIds, limit])
-
-  console.log(`lexicalShortlist: raw query returned ${chunks.length} chunks`)
 
   return chunks.map(c => ({
     ...c,
