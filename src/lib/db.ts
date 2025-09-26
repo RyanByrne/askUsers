@@ -5,11 +5,17 @@ declare global {
 }
 
 function createPrismaClient() {
+  // Add connection pooling and prepared statement management
+  const connectionUrl = process.env.DATABASE_URL
+  const pooledUrl = connectionUrl?.includes('?')
+    ? `${connectionUrl}&pgbouncer=true&connection_limit=1&pool_timeout=0&statement_cache_size=0`
+    : `${connectionUrl}?pgbouncer=true&connection_limit=1&pool_timeout=0&statement_cache_size=0`
+
   return new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
     datasources: {
       db: {
-        url: process.env.DATABASE_URL,
+        url: pooledUrl,
       },
     },
   })
