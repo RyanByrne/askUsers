@@ -2,7 +2,7 @@
 
 Production-ready Slack bot that answers questions with grounded, cited summaries from Dovetail and Slack channels.
 
-⚡ **Latest Update**: Fixed SQL query issues and Slack command error handling for production deployment.
+⚡ **Latest Update**: Production deployment with working Slack research copilot - v1.0 ready!
 
 ## Setup
 
