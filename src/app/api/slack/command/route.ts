@@ -15,18 +15,44 @@ export async function POST(request: NextRequest) {
   const params = new URLSearchParams(body)
   const command = parseSlackCommand(params)
 
-  setTimeout(async () => {
+  // Process synchronously for debugging
+  try {
+    console.log('Starting command processing for team:', command.teamId)
+
+    // Test immediate response
+    await fetch(command.responseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        response_type: 'ephemeral',
+        text: `Debug: Received "${command.text}" from team ${command.teamId}`
+      })
+    })
+
+    // Try to process the command
+    await processCommand(command)
+  } catch (error) {
+    console.error('Immediate error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+    // Send error directly to Slack
     try {
-      await processCommand(command)
-    } catch (error) {
-      console.error('Error processing command:', error)
-      await sendErrorResponse(command.responseUrl)
+      await fetch(command.responseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          response_type: 'ephemeral',
+          text: `Error: ${errorMessage.substring(0, 200)}`
+        })
+      })
+    } catch (fetchError) {
+      console.error('Failed to send error to Slack:', fetchError)
     }
-  }, 0)
+  }
 
   return NextResponse.json({
     response_type: 'ephemeral',
-    text: '🔍 Working on your research question...'
+    text: 'Processing...'
   })
 }
 
