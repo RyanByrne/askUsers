@@ -15,11 +15,20 @@ function createPrismaClient() {
   })
 }
 
-export const prisma = globalThis.__prisma ?? createPrismaClient()
+// In production/serverless, create a fresh client each time to avoid prepared statement conflicts
+function getPrismaClient() {
+  if (process.env.NODE_ENV === 'production') {
+    return createPrismaClient()
+  }
 
-if (process.env.NODE_ENV !== 'production') {
-  globalThis.__prisma = prisma
+  if (!globalThis.__prisma) {
+    globalThis.__prisma = createPrismaClient()
+  }
+
+  return globalThis.__prisma
 }
+
+export const prisma = getPrismaClient()
 
 export async function executeRaw<T = unknown>(
   query: string,

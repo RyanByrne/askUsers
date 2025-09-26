@@ -1,4 +1,4 @@
-import { prisma } from './db'
+import { PrismaClient } from '@prisma/client'
 
 export interface Principals {
   teamId: string
@@ -6,60 +6,89 @@ export interface Principals {
   channelId?: string
 }
 
+function createFreshPrismaClient() {
+  return new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL,
+      },
+    },
+  })
+}
+
 export async function getPermittedDocumentIds(
   principals: Principals
 ): Promise<string[]> {
-  const whereConditions = [
-    {
-      principalType: 'slack_team',
-      principalId: principals.teamId
-    },
-    {
-      principalType: 'slack_team',
-      principalId: '*'
-    },
-    {
-      principalType: 'slack_user',
-      principalId: principals.userId
+  // Create a fresh client for each request in production to avoid prepared statement conflicts
+  const client = process.env.NODE_ENV === 'production' ? createFreshPrismaClient() : (await import('./db')).prisma
+
+  try {
+    const whereConditions = [
+      {
+        principalType: 'slack_team',
+        principalId: principals.teamId
+      },
+      {
+        principalType: 'slack_team',
+        principalId: '*'
+      },
+      {
+        principalType: 'slack_user',
+        principalId: principals.userId
+      }
+    ]
+
+    if (principals.channelId) {
+      whereConditions.push({
+        principalType: 'slack_channel',
+        principalId: principals.channelId
+      })
     }
-  ]
 
-  if (principals.channelId) {
-    whereConditions.push({
-      principalType: 'slack_channel',
-      principalId: principals.channelId
+    const permissions = await client.permission.findMany({
+      where: {
+        OR: whereConditions
+      },
+      select: {
+        documentId: true
+      },
+      distinct: ['documentId']
     })
+
+    return permissions.map(p => p.documentId)
+  } finally {
+    // Disconnect fresh client in production
+    if (process.env.NODE_ENV === 'production') {
+      await client.$disconnect()
+    }
   }
-
-  const permissions = await prisma.permission.findMany({
-    where: {
-      OR: whereConditions
-    },
-    select: {
-      documentId: true
-    },
-    distinct: ['documentId']
-  })
-
-  return permissions.map(p => p.documentId)
 }
 
 export async function setDocumentPermissions(
   documentId: string,
   permissions: Array<{ principalType: string; principalId: string }>
 ) {
-  await prisma.permission.deleteMany({
-    where: { documentId }
-  })
+  const client = process.env.NODE_ENV === 'production' ? createFreshPrismaClient() : (await import('./db')).prisma
 
-  if (permissions.length > 0) {
-    await prisma.permission.createMany({
-      data: permissions.map(p => ({
-        documentId,
-        principalType: p.principalType,
-        principalId: p.principalId
-      }))
+  try {
+    await client.permission.deleteMany({
+      where: { documentId }
     })
+
+    if (permissions.length > 0) {
+      await client.permission.createMany({
+        data: permissions.map(p => ({
+          documentId,
+          principalType: p.principalType,
+          principalId: p.principalId
+        }))
+      })
+    }
+  } finally {
+    if (process.env.NODE_ENV === 'production') {
+      await client.$disconnect()
+    }
   }
 }
 
