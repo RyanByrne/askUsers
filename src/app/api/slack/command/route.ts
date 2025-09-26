@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifySlackRequest, parseSlackCommand, getSlackClient, formatSlackAnswer } from '@/lib/slack'
+import { verifySlackRequest, parseSlackCommand, formatSlackAnswer } from '@/lib/slack'
 import { hybridRetrieval } from '@/lib/retrieval'
 import { generateAnswer } from '@/lib/answer'
 
@@ -38,40 +38,59 @@ async function processCommand(command: {
   responseUrl: string
   triggerId: string
 }) {
-  const chunks = await hybridRetrieval(
-    command.text,
-    {
-      teamId: command.teamId,
-      userId: command.userId,
-      channelId: command.channelId
-    },
-    12
-  )
+  try {
+    console.log('Processing command:', { teamId: command.teamId, userId: command.userId, text: command.text })
 
-  if (chunks.length === 0) {
+    const chunks = await hybridRetrieval(
+      command.text,
+      {
+        teamId: command.teamId,
+        userId: command.userId,
+        channelId: command.channelId
+      },
+      12
+    )
+
+    console.log('Retrieved chunks:', chunks.length)
+
+    if (chunks.length === 0) {
+      await fetch(command.responseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          response_type: 'in_channel',
+          text: 'No relevant information found for your question. Try rephrasing or check if you have access to the relevant channels.'
+        })
+      })
+      return
+    }
+
+    console.log('Generating answer...')
+    const { answer, sources } = await generateAnswer(command.text, chunks)
+    console.log('Generated answer, sources count:', sources.length)
+
+    const slackMessage = formatSlackAnswer(answer, sources)
+
+    await fetch(command.responseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        response_type: 'in_channel',
+        ...slackMessage
+      })
+    })
+    console.log('Sent response successfully')
+  } catch (error) {
+    console.error('Error in processCommand:', error)
     await fetch(command.responseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         response_type: 'ephemeral',
-        text: 'No relevant information found for your question. Try rephrasing or check if you have access to the relevant channels.'
+        text: `Debug: Error occurred - ${error instanceof Error ? error.message : 'Unknown error'}`
       })
     })
-    return
   }
-
-  const { answer, sources } = await generateAnswer(command.text, chunks)
-
-  const slackMessage = formatSlackAnswer(answer, sources)
-
-  await fetch(command.responseUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      response_type: 'in_channel',
-      ...slackMessage
-    })
-  })
 }
 
 async function sendErrorResponse(responseUrl: string) {
