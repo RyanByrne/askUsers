@@ -30,6 +30,9 @@ export async function getPermittedDocumentIds(
   const client = process.env.NODE_ENV === 'production' ? createFreshPrismaClient() : (await import('./db')).prisma
 
   try {
+    // Log the principals being used for debugging
+    console.log('getPermittedDocumentIds called with principals:', principals)
+
     const whereConditions = [
       {
         principalType: 'slack_team',
@@ -52,6 +55,8 @@ export async function getPermittedDocumentIds(
       })
     }
 
+    console.log('Permission query conditions:', whereConditions)
+
     const permissions = await client.permission.findMany({
       where: {
         OR: whereConditions
@@ -62,6 +67,7 @@ export async function getPermittedDocumentIds(
       distinct: ['documentId']
     })
 
+    console.log(`Found ${permissions.length} permitted documents`)
     return permissions.map(p => p.documentId)
   } finally {
     // Disconnect fresh client in production
