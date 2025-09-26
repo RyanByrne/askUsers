@@ -68,7 +68,7 @@ async function lexicalShortlist(
     WHERE
       d.id::text = ANY($3) AND
       (
-        similarity(d.searchable, $1) > 0.1 OR
+        similarity(d.searchable, $1) > 0.05 OR
         c.text ILIKE $2
       )
     ORDER BY c.id, lex_score DESC
