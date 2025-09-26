@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { mode, projectIds, payload } = body
+    const { mode, projectIds, payload, batchSize = 3, startIndex = 0 } = body
 
     if (!mode || !['api', 'json'].includes(mode)) {
       return NextResponse.json(
@@ -18,27 +18,56 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (mode === 'api' && !projectIds) {
-      const defaultIds = process.env.DOVETAIL_PROJECT_IDS?.split(',') || []
-      if (defaultIds.length === 0) {
-        return NextResponse.json(
-          { error: 'No project IDs provided and no defaults configured' },
-          { status: 400 }
-        )
+    if (mode === 'api') {
+      let targetProjectIds = projectIds
+
+      if (!projectIds) {
+        const defaultIds = process.env.DOVETAIL_PROJECT_IDS?.split(',') || []
+        if (defaultIds.length === 0) {
+          return NextResponse.json(
+            { error: 'No project IDs provided and no defaults configured' },
+            { status: 400 }
+          )
+        }
+        targetProjectIds = defaultIds
       }
-      await ingestDovetailData('api', defaultIds)
+
+      // For wildcard, fetch all projects first
+      if (targetProjectIds.includes('*')) {
+        const { fetchDovetailProjects } = await import('@/lib/ingest/dovetail')
+        const apiKey = process.env.DOVETAIL_API_KEY!
+        const allProjects = await fetchDovetailProjects(apiKey)
+        targetProjectIds = allProjects.map(p => p.id)
+      }
+
+      // Process in batches to avoid timeout
+      const batch = targetProjectIds.slice(startIndex, startIndex + batchSize)
+      const remainingProjects = targetProjectIds.slice(startIndex + batchSize)
+
+      await ingestDovetailData('api', batch, payload)
+
+      return NextResponse.json({
+        success: true,
+        message: `Processed batch of ${batch.length} projects`,
+        processed: batch,
+        totalProjects: targetProjectIds.length,
+        processedCount: startIndex + batch.length,
+        remainingCount: remainingProjects.length,
+        nextBatchUrl: remainingProjects.length > 0
+          ? `/api/sync/dovetail?startIndex=${startIndex + batchSize}&batchSize=${batchSize}`
+          : null
+      })
     } else {
       await ingestDovetailData(mode, projectIds, payload)
+      return NextResponse.json({
+        success: true,
+        message: 'Dovetail sync completed'
+      })
     }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Dovetail sync initiated'
-    })
   } catch (error) {
     console.error('Error in Dovetail sync:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

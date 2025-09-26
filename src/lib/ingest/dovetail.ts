@@ -64,7 +64,7 @@ interface DovetailItem {
   highlights?: string[]
 }
 
-async function fetchDovetailProjects(apiKey: string): Promise<DovetailProject[]> {
+export async function fetchDovetailProjects(apiKey: string): Promise<DovetailProject[]> {
   console.log('Fetching all Dovetail projects')
 
   const response = await rateLimitedFetch('https://dovetail.com/api/v1/projects', {
