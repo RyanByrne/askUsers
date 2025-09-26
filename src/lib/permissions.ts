@@ -10,13 +10,13 @@ export async function getPermittedDocumentIds(
   principals: Principals
 ): Promise<string[]> {
   const conditions = [
-    `principal_type = 'slack_team' AND principal_id = $1`,
-    `principal_type = 'slack_user' AND principal_id = $2`
+    `"principalType" = 'slack_team' AND "principalId" = $1`,
+    `"principalType" = 'slack_user' AND "principalId" = $2`
   ]
   const params = [principals.teamId, principals.userId]
 
   if (principals.channelId) {
-    conditions.push(`principal_type = 'slack_channel' AND principal_id = $3`)
+    conditions.push(`"principalType" = 'slack_channel' AND "principalId" = $3`)
     params.push(principals.channelId)
   }
 

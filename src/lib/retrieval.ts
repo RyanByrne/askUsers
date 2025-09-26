@@ -59,7 +59,7 @@ async function lexicalShortlist(
     FROM "Chunk" c
     INNER JOIN "Document" d ON c."documentId" = d.id
     WHERE
-      d.id = ANY($3::uuid[]) AND
+      d.id = ANY($3) AND
       (
         similarity(d.searchable, $1) > 0.1 OR
         c.text ILIKE $2
