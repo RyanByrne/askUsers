@@ -1,0 +1,26 @@
+{
+  "crons": [
+    {
+      "path": "/api/sync/dovetail",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/sync/slack",
+      "schedule": "0 4 * * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/ask/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/slack/command/route.ts": {
+      "maxDuration": 10
+    },
+    "src/app/api/sync/dovetail/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/sync/slack/route.ts": {
+      "maxDuration": 300
+    }
+  }
+}

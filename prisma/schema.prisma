@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  extensions = [vector(schema: "public"), pgTrgm(schema: "public")]
+}
+
+model Source {
+  id         String    @id @default(uuid())
+  kind       String
+  externalId String    @unique
+  name       String
+  visibility Json
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  documents  Document[]
+
+  @@index([kind, externalId])
+}
+
+model Document {
+  id         String       @id @default(uuid())
+  sourceId   String
+  source     Source       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  externalId String       @unique
+  title      String
+  url        String
+  author     String
+  createdAt  DateTime
+  updatedAt  DateTime
+  searchable String       @db.Text
+  raw        Json
+  chunks     Chunk[]
+  permissions Permission[]
+
+  @@index([sourceId])
+  @@index([externalId])
+  @@index([updatedAt])
+}
+
+model Chunk {
+  id         String                  @id @default(uuid())
+  documentId String
+  document   Document                @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  ordinal    Int
+  text       String                  @db.Text
+  embedding  Unsupported("vector(3072)")
+  meta       Json?
+
+  @@unique([documentId, ordinal])
+  @@index([documentId])
+}
+
+model Permission {
+  id           String   @id @default(uuid())
+  documentId   String
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  principalType String
+  principalId  String
+
+  @@unique([documentId, principalType, principalId])
+  @@index([principalType, principalId])
+}
+
+model SyncState {
+  id       String   @id @default(uuid())
+  sourceId String   @unique
+  cursor   String?
+  lastRun  DateTime
+  status   String
+  stats    Json?
+}
