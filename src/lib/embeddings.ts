@@ -1,13 +1,22 @@
 import OpenAI from 'openai'
-import Redis from '@upstash/redis'
+import { Redis } from '@upstash/redis'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
-const redis = process.env.REDIS_URL ? new Redis({ url: process.env.REDIS_URL }) : null
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null
+const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  ? new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN
+    })
+  : null
 
 const EMBED_MODEL = process.env.EMBED_MODEL || 'text-embedding-3-large'
 const EMBED_CACHE_TTL = 86400
 
 export async function embedText(text: string): Promise<number[]> {
+  if (!openai) {
+    throw new Error('OpenAI API key not configured')
+  }
+
   const cacheKey = `embed:${EMBED_MODEL}:${Buffer.from(text).toString('base64').slice(0, 100)}`
 
   if (redis) {

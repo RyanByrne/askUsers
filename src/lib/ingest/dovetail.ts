@@ -78,7 +78,7 @@ export async function ingestDovetailData(
         createdAt: new Date(item.createdAt),
         updatedAt: new Date(item.updatedAt),
         searchable: searchableText,
-        raw: item
+        raw: item as any
       },
       update: {
         title: item.title,
@@ -86,7 +86,7 @@ export async function ingestDovetailData(
         author: item.author || 'Unknown',
         updatedAt: new Date(item.updatedAt),
         searchable: searchableText,
-        raw: item
+        raw: item as any
       }
     })
 

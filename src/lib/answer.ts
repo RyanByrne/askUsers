@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null
 const MODEL_NAME = process.env.MODEL_NAME || 'gpt-4o-mini'
 
 interface Source {
@@ -26,6 +26,10 @@ export async function generateAnswer(
     excerpt: c.text.slice(0, 500)
   }))
 
+  if (!openai) {
+    throw new Error('OpenAI API key not configured')
+  }
+
   const systemPrompt = `You are a research assistant. Only write facts supported by the provided snippets. Cite every key claim with [1], [2], etc. If insufficient evidence, say what's missing. Answer in 120-180 words.`
 
   const userPrompt = `Question: ${question}
@@ -49,7 +53,7 @@ Write a comprehensive answer using **bold** for key phrases. Cite all claims.`
 
   let answer = completion.choices[0].message.content || ''
 
-  if (selfCheck) {
+  if (selfCheck && openai) {
     const checkCompletion = await openai.chat.completions.create({
       model: MODEL_NAME,
       messages: [

@@ -75,13 +75,13 @@ export async function ingestSlackChannel(
         createdAt: new Date(parseFloat(mainMessage.ts) * 1000),
         updatedAt: new Date(parseFloat(mainMessage.ts) * 1000),
         searchable: combinedText,
-        raw: { messages: group }
+        raw: { messages: group } as any
       },
       update: {
         title: mainMessage.text.slice(0, 100) + (mainMessage.text.length > 100 ? '...' : ''),
         url: permalink,
         searchable: combinedText,
-        raw: { messages: group }
+        raw: { messages: group } as any
       }
     })
 
