@@ -25,10 +25,20 @@ export async function POST(request: NextRequest) {
 
   setTimeout(async () => {
     try {
+      console.log('Starting processCommand for:', command.text)
       await processCommand(command)
+      console.log('processCommand completed successfully')
     } catch (error) {
       console.error('Error processing command:', error)
-      await sendErrorResponse(command.responseUrl)
+      // Send error details directly to user
+      await fetch(command.responseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          response_type: 'ephemeral',
+          text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+        })
+      })
     }
   }, 0)
 
