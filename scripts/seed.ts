@@ -5,17 +5,23 @@ import { bulkInsertChunks } from '../src/lib/db'
 async function seed() {
   console.log('Starting seed...')
 
-  const dovetailSource = await prisma.source.create({
-    data: {
+  const dovetailSource = await prisma.source.upsert({
+    where: { externalId: 'dovetail-seed-1' },
+    create: {
       kind: 'dovetail',
       externalId: 'dovetail-seed-1',
+      name: 'Dovetail Seed Project',
+      visibility: { public: true }
+    },
+    update: {
       name: 'Dovetail Seed Project',
       visibility: { public: true }
     }
   })
 
-  const dovetailDoc = await prisma.document.create({
-    data: {
+  const dovetailDoc = await prisma.document.upsert({
+    where: { externalId: 'dovetail-doc-1' },
+    create: {
       sourceId: dovetailSource.id,
       externalId: 'dovetail-doc-1',
       title: 'Agency Owner Interview - Commission Reconciliation',
@@ -32,16 +38,28 @@ async function seed() {
           'Excel-based process is error-prone',
           'Need automated reconciliation system'
         ]
-      }
+      } as any
+    },
+    update: {
+      title: 'Agency Owner Interview - Commission Reconciliation',
+      updatedAt: new Date('2024-01-16')
     }
   })
 
-  await prisma.permission.create({
-    data: {
+  await prisma.permission.upsert({
+    where: {
+      documentId_principalType_principalId: {
+        documentId: dovetailDoc.id,
+        principalType: 'slack_team',
+        principalId: '*'
+      }
+    },
+    create: {
       documentId: dovetailDoc.id,
       principalType: 'slack_team',
       principalId: '*'
-    }
+    },
+    update: {}
   })
 
   const dovetailChunkText = 'Agency owner mentioned that commission reconciliation is their biggest pain point. They spend 2-3 days each month manually reconciling commissions in Excel spreadsheets. The process is error-prone and they have found discrepancies of up to $50,000 in a single month. They urgently need an automated solution.'
@@ -55,17 +73,22 @@ async function seed() {
     meta: { type: 'interview_highlight' }
   }])
 
-  const slackSource = await prisma.source.create({
-    data: {
+  const slackSource = await prisma.source.upsert({
+    where: { externalId: 'slack-T001-C001' },
+    create: {
       kind: 'slack',
       externalId: 'slack-T001-C001',
       name: 'Slack #product-feedback',
-      visibility: { team: 'T001', channel: 'C001' }
+      visibility: { team: 'T001', channel: 'C001' } as any
+    },
+    update: {
+      name: 'Slack #product-feedback'
     }
   })
 
-  const slackDoc = await prisma.document.create({
-    data: {
+  const slackDoc = await prisma.document.upsert({
+    where: { externalId: 'slack-C001-1704067200.000100' },
+    create: {
       sourceId: slackSource.id,
       externalId: 'slack-C001-1704067200.000100',
       title: 'Discussion about commission features',
@@ -80,16 +103,28 @@ async function seed() {
           user: 'U12345',
           text: 'Multiple customers have asked about automated commission tracking. Seems like a common request especially from agencies.'
         }]
-      }
+      } as any
+    },
+    update: {
+      title: 'Discussion about commission features',
+      updatedAt: new Date('2024-01-01T12:00:00Z')
     }
   })
 
-  await prisma.permission.create({
-    data: {
+  await prisma.permission.upsert({
+    where: {
+      documentId_principalType_principalId: {
+        documentId: slackDoc.id,
+        principalType: 'slack_channel',
+        principalId: 'C001'
+      }
+    },
+    create: {
       documentId: slackDoc.id,
       principalType: 'slack_channel',
       principalId: 'C001'
-    }
+    },
+    update: {}
   })
 
   const slackChunkText = 'Multiple customers have asked about automated commission tracking. Seems like a common request especially from agencies.'
@@ -103,23 +138,38 @@ async function seed() {
     meta: { user: 'U12345', ts: '1704067200.000100' }
   }])
 
-  await prisma.syncState.createMany({
-    data: [
-      {
-        sourceId: 'dovetail-global',
-        cursor: new Date().toISOString(),
-        lastRun: new Date(),
-        status: 'completed',
-        stats: { documentsSeeded: 1 }
-      },
-      {
-        sourceId: 'slack-C001',
-        cursor: new Date().toISOString(),
-        lastRun: new Date(),
-        status: 'completed',
-        stats: { documentsSeeded: 1 }
-      }
-    ]
+  await prisma.syncState.upsert({
+    where: { sourceId: 'dovetail-global' },
+    create: {
+      sourceId: 'dovetail-global',
+      cursor: new Date().toISOString(),
+      lastRun: new Date(),
+      status: 'completed',
+      stats: { documentsSeeded: 1 } as any
+    },
+    update: {
+      cursor: new Date().toISOString(),
+      lastRun: new Date(),
+      status: 'completed',
+      stats: { documentsSeeded: 1 } as any
+    }
+  })
+
+  await prisma.syncState.upsert({
+    where: { sourceId: 'slack-C001' },
+    create: {
+      sourceId: 'slack-C001',
+      cursor: new Date().toISOString(),
+      lastRun: new Date(),
+      status: 'completed',
+      stats: { documentsSeeded: 1 } as any
+    },
+    update: {
+      cursor: new Date().toISOString(),
+      lastRun: new Date(),
+      status: 'completed',
+      stats: { documentsSeeded: 1 } as any
+    }
   })
 
   console.log('Seed completed!')

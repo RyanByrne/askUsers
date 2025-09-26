@@ -31,12 +31,12 @@ export async function bulkInsertChunks(
   const values = chunks
     .map(
       (c) =>
-        `('${c.documentId}', ${c.ordinal}, '${c.text.replace(/'/g, "''")}', '[${c.embedding.join(',')}]'::vector, '${JSON.stringify(c.meta || {})}'::jsonb)`
+        `(gen_random_uuid(), '${c.documentId}', ${c.ordinal}, '${c.text.replace(/'/g, "''")}', '[${c.embedding.join(',')}]'::vector, '${JSON.stringify(c.meta || {})}'::jsonb)`
     )
     .join(',')
 
   await prisma.$executeRawUnsafe(`
-    INSERT INTO "Chunk" ("documentId", ordinal, text, embedding, meta)
+    INSERT INTO "Chunk" (id, "documentId", ordinal, text, embedding, meta)
     VALUES ${values}
     ON CONFLICT ("documentId", ordinal) DO UPDATE SET
       text = EXCLUDED.text,

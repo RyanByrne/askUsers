@@ -9,7 +9,7 @@ const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_RE
     })
   : null
 
-const EMBED_MODEL = process.env.EMBED_MODEL || 'text-embedding-3-large'
+const EMBED_MODEL = process.env.EMBED_MODEL || 'text-embedding-3-small'
 const EMBED_CACHE_TTL = 86400
 
 export async function embedText(text: string): Promise<number[]> {

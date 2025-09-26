@@ -37,7 +37,7 @@ CREATE TABLE "Chunk" (
     "documentId" TEXT NOT NULL,
     "ordinal" INTEGER NOT NULL,
     "text" TEXT NOT NULL,
-    "embedding" vector(3072),
+    "embedding" vector(1536),
     "meta" JSONB,
 
     CONSTRAINT "Chunk_pkey" PRIMARY KEY ("id")
@@ -101,7 +101,7 @@ CREATE UNIQUE INDEX "SyncState_sourceId_key" ON "SyncState"("sourceId");
 -- Create GIN index for text search
 CREATE INDEX "Document_searchable_gin_idx" ON "Document" USING gin("searchable" gin_trgm_ops);
 
--- Create IVFFlat index for vector similarity
+-- Create IVFFlat index for vector similarity (1536 dimensions)
 CREATE INDEX "Chunk_embedding_ivfflat_idx" ON "Chunk" USING ivfflat("embedding" vector_cosine_ops) WITH (lists = 100);
 
 -- Create BRIN index for time-based queries
