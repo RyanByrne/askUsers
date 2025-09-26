@@ -2,6 +2,36 @@ import { prisma } from '../db'
 import { embedBatch } from '../embeddings'
 import { bulkInsertChunks } from '../db'
 
+// Rate limiting helper
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function rateLimitedFetch(url: string, options: RequestInit, retries = 3): Promise<Response> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const response = await fetch(url, options)
+
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('Retry-After')
+      const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : Math.min(1000 * Math.pow(2, attempt), 10000)
+
+      console.log(`Rate limited. Waiting ${waitTime}ms before retry ${attempt}/${retries}`)
+      await sleep(waitTime)
+      continue
+    }
+
+    if (!response.ok && attempt < retries) {
+      console.log(`Request failed (${response.status}). Retrying in ${1000 * attempt}ms...`)
+      await sleep(1000 * attempt)
+      continue
+    }
+
+    return response
+  }
+
+  throw new Error('Max retries exceeded')
+}
+
 interface DovetailProject {
   id: string
   name: string
@@ -37,7 +67,7 @@ interface DovetailItem {
 async function fetchDovetailProjects(apiKey: string): Promise<DovetailProject[]> {
   console.log('Fetching all Dovetail projects')
 
-  const response = await fetch('https://dovetail.com/api/v1/projects', {
+  const response = await rateLimitedFetch('https://dovetail.com/api/v1/projects', {
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
@@ -55,7 +85,7 @@ async function fetchDovetailProjects(apiKey: string): Promise<DovetailProject[]>
 async function fetchDovetailProjectData(projectId: string, apiKey: string): Promise<DovetailDataItem[]> {
   console.log(`Fetching data for Dovetail project ${projectId}`)
 
-  const response = await fetch(`https://dovetail.com/api/v1/data?project_id=${projectId}`, {
+  const response = await rateLimitedFetch(`https://dovetail.com/api/v1/data?project_id=${projectId}`, {
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
@@ -73,7 +103,7 @@ async function fetchDovetailProjectData(projectId: string, apiKey: string): Prom
 async function fetchDovetailDataDetails(dataId: string, apiKey: string): Promise<DovetailDataItem> {
   console.log(`Fetching details for Dovetail data item ${dataId}`)
 
-  const response = await fetch(`https://dovetail.com/api/v1/data/${dataId}`, {
+  const response = await rateLimitedFetch(`https://dovetail.com/api/v1/data/${dataId}`, {
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
@@ -114,6 +144,9 @@ export async function fetchDovetailProjectItems(
           content: content,
           highlights: [] // We'll extract highlights from notes/insights separately
         })
+
+        // Add small delay between data item requests
+        await sleep(500) // 500ms delay between data items
       } catch (error) {
         console.error(`Error fetching details for data item ${dataItem.id}:`, error)
         // Continue processing other items
@@ -154,6 +187,11 @@ export async function ingestDovetailData(
       const projectItems = await fetchDovetailProjectItems(projectId, apiKey)
       items.push(...projectItems)
       console.log(`Ingested ${projectItems.length} items from project ${projectId}`)
+
+      // Add delay between projects to avoid rate limiting
+      if (targetProjectIds.indexOf(projectId) < targetProjectIds.length - 1) {
+        await sleep(1000) // 1 second delay between projects
+      }
     }
   } else if (mode === 'json' && payload) {
     items.push(...(Array.isArray(payload) ? payload : [payload]))
