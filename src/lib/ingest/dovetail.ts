@@ -143,7 +143,7 @@ export async function fetchDovetailProjectItems(
           // Fetch full details for each data item
           fullData = await fetchDovetailDataDetails(itemId, apiKey)
         } catch (error) {
-          console.warn(`Could not fetch details for ${itemId}, using basic data:`, error.message)
+          console.warn(`Could not fetch details for ${itemId}, using basic data:`, error instanceof Error ? error.message : String(error))
           // Use the basic data item if we can't fetch details
           fullData = dataItem
         }
@@ -158,13 +158,13 @@ export async function fetchDovetailProjectItems(
 
         items.push({
           id: fullData.id || itemId,
-          title: fullData.title || fullData.name || 'Untitled Research Item',
+          title: fullData.title || (fullData as any).name || 'Untitled Research Item',
           url: fullData.url || `https://dovetail.com/projects/${projectId}/items/${fullData.id || itemId}`,
-          author: fullData.author || 'Research Team', // Dovetail doesn't always provide author info
-          createdAt: fullData.created_at || fullData.createdAt || new Date().toISOString(),
-          updatedAt: fullData.updated_at || fullData.updatedAt || new Date().toISOString(),
+          author: (fullData as any).author || 'Research Team', // Dovetail doesn't always provide author info
+          createdAt: fullData.created_at || (fullData as any).createdAt || new Date().toISOString(),
+          updatedAt: fullData.updated_at || (fullData as any).updatedAt || new Date().toISOString(),
           content: content,
-          highlights: fullData.highlights || [] // We'll extract highlights from notes/insights separately
+          highlights: (fullData as any).highlights || [] // We'll extract highlights from notes/insights separately
         })
 
         // Add small delay between data item requests
@@ -228,7 +228,7 @@ export async function ingestDovetailData(
 
     // Sanitize the item data with robust fallbacks
     const itemId = item.id || `fallback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    const itemTitle = item.title || item.name || 'Untitled Research Item'
+    const itemTitle = item.title || (item as any).name || 'Untitled Research Item'
 
     console.log(`Processing Dovetail item: ${itemId} - ${itemTitle}`)
 

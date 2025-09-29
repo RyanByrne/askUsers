@@ -77,27 +77,25 @@ export async function bulkInsertChunks(
       const documentId = chunks[0].documentId
       console.log(`Deleting existing chunks for document ${documentId}`)
 
-      await client.chunk.deleteMany({
-        where: {
-          documentId: documentId
-        }
-      })
+      await client.$executeRawUnsafe(`
+        DELETE FROM "Chunk" WHERE "documentId" = $1
+      `, documentId)
 
       console.log(`Inserting ${chunks.length} new chunks`)
 
-      // Insert chunks one by one to avoid SQL construction issues
+      // Insert chunks using raw SQL to handle vector type properly
       for (const chunk of chunks) {
         console.log(`Inserting chunk ${chunk.ordinal} with ${chunk.embedding.length} dimensions`)
 
-        await client.chunk.create({
-          data: {
-            documentId: chunk.documentId,
-            ordinal: chunk.ordinal,
-            text: chunk.text,
-            embedding: chunk.embedding,
-            meta: chunk.meta || {}
-          }
-        })
+        // Escape single quotes in text and convert embedding to vector format
+        const escapedText = chunk.text.replace(/'/g, "''")
+        const vectorString = `[${chunk.embedding.join(',')}]`
+        const metaString = JSON.stringify(chunk.meta || {}).replace(/'/g, "''")
+
+        await client.$executeRawUnsafe(`
+          INSERT INTO "Chunk" (id, "documentId", ordinal, text, embedding, meta)
+          VALUES (gen_random_uuid(), $1, $2, $3, $4::vector, $5::jsonb)
+        `, chunk.documentId, chunk.ordinal, escapedText, vectorString, metaString)
       }
     }
   } finally {
