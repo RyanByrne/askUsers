@@ -129,32 +129,42 @@ export async function fetchDovetailProjectItems(
 
     for (const dataItem of dataItems) {
       try {
-        // Skip invalid data items
-        if (!dataItem || !dataItem.id) {
-          console.warn('Skipping invalid data item:', dataItem)
+        // Skip only completely invalid data items
+        if (!dataItem) {
+          console.warn('Skipping null/undefined data item')
           continue
         }
 
-        // Fetch full details for each data item
-        const fullData = await fetchDovetailDataDetails(dataItem.id, apiKey)
+        // Use fallback ID if missing
+        const itemId = dataItem.id || `unknown-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-        // Validate required fields
-        if (!fullData || !fullData.id || !fullData.title) {
-          console.warn('Skipping data item with missing required fields:', fullData)
-          continue
+        let fullData
+        try {
+          // Fetch full details for each data item
+          fullData = await fetchDovetailDataDetails(itemId, apiKey)
+        } catch (error) {
+          console.warn(`Could not fetch details for ${itemId}, using basic data:`, error.message)
+          // Use the basic data item if we can't fetch details
+          fullData = dataItem
+        }
+
+        // Don't skip - provide fallbacks for missing fields
+        if (!fullData) {
+          console.warn('No data available, using minimal fallback')
+          fullData = { id: itemId, title: 'Untitled Item' }
         }
 
         const content = fullData.transcript || fullData.content || fullData.description || ''
 
         items.push({
-          id: fullData.id,
-          title: fullData.title,
-          url: fullData.url || `https://dovetail.com/projects/${projectId}/items/${fullData.id}`,
-          author: 'Research Team', // Dovetail doesn't always provide author info
-          createdAt: fullData.created_at || new Date().toISOString(),
-          updatedAt: fullData.updated_at || new Date().toISOString(),
+          id: fullData.id || itemId,
+          title: fullData.title || fullData.name || 'Untitled Research Item',
+          url: fullData.url || `https://dovetail.com/projects/${projectId}/items/${fullData.id || itemId}`,
+          author: fullData.author || 'Research Team', // Dovetail doesn't always provide author info
+          createdAt: fullData.created_at || fullData.createdAt || new Date().toISOString(),
+          updatedAt: fullData.updated_at || fullData.updatedAt || new Date().toISOString(),
           content: content,
-          highlights: [] // We'll extract highlights from notes/insights separately
+          highlights: fullData.highlights || [] // We'll extract highlights from notes/insights separately
         })
 
         // Add small delay between data item requests
@@ -210,17 +220,22 @@ export async function ingestDovetailData(
   }
 
   for (const item of items) {
-    // Validate item data before processing
-    if (!item || !item.id || !item.title) {
-      console.warn('Skipping invalid item:', item)
+    // Only skip completely null items
+    if (!item) {
+      console.warn('Skipping null item')
       continue
     }
 
-    // Sanitize the item data
+    // Sanitize the item data with robust fallbacks
+    const itemId = item.id || `fallback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const itemTitle = item.title || item.name || 'Untitled Research Item'
+
+    console.log(`Processing Dovetail item: ${itemId} - ${itemTitle}`)
+
     const sanitizedItem = {
-      id: String(item.id),
-      title: String(item.title).substring(0, 500), // Limit title length
-      url: item.url || `https://dovetail.com/items/${item.id}`,
+      id: String(itemId),
+      title: String(itemTitle).substring(0, 500), // Limit title length
+      url: item.url || `https://dovetail.com/items/${itemId}`,
       author: item.author || 'Research Team',
       createdAt: item.createdAt || new Date().toISOString(),
       updatedAt: item.updatedAt || new Date().toISOString(),
