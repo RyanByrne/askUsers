@@ -27,6 +27,7 @@ export async function embedText(text: string): Promise<number[]> {
   const response = await openai.embeddings.create({
     model: EMBED_MODEL,
     input: text.slice(0, 8000),
+    dimensions: 1536, // Explicitly set to match database schema
   })
 
   const embedding = response.data[0].embedding
