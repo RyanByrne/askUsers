@@ -5,11 +5,28 @@ declare global {
 }
 
 function createPrismaClient() {
-  // Add connection pooling and prepared statement management
+  // For Supabase in Vercel, use transaction pooling mode
   const connectionUrl = process.env.DATABASE_URL
-  const pooledUrl = connectionUrl?.includes('?')
-    ? `${connectionUrl}&pgbouncer=true&connection_limit=1&pool_timeout=0&statement_cache_size=0`
-    : `${connectionUrl}?pgbouncer=true&connection_limit=1&pool_timeout=0&statement_cache_size=0`
+  let pooledUrl: string
+
+  if (process.env.NODE_ENV === 'production') {
+    // Use Supabase transaction pooling URL for Vercel
+    pooledUrl = connectionUrl?.replace(
+      'db.zkmeikgftzqfwwhsimea.supabase.co:5432',
+      'aws-0-us-east-1.pooler.supabase.com:6543'
+    ) || connectionUrl || ''
+
+    // Add SSL and pooling parameters for production
+    if (!pooledUrl.includes('?')) {
+      pooledUrl += '?'
+    } else {
+      pooledUrl += '&'
+    }
+    pooledUrl += 'pgbouncer=true&connection_limit=1&statement_cache_size=0&sslmode=require'
+  } else {
+    // Development - use direct connection
+    pooledUrl = connectionUrl || ''
+  }
 
   return new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
