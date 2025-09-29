@@ -65,26 +65,38 @@ export async function bulkInsertChunks(
   // Debug logging for embedding dimensions
   chunks.forEach((chunk, i) => {
     console.log(`Chunk ${i}: embedding dimensions = ${chunk.embedding.length}`)
+    // Log a sample of the embedding to check for NaN or invalid values
+    console.log(`First 5 embedding values:`, chunk.embedding.slice(0, 5))
   })
 
   const client = process.env.NODE_ENV === 'production' ? createPrismaClient() : prisma
 
   try {
-    const values = chunks
-      .map(
-        (c) =>
-          `(gen_random_uuid(), '${c.documentId}', ${c.ordinal}, '${c.text.replace(/'/g, "''")}', '[${c.embedding.join(',')}]'::vector, '${JSON.stringify(c.meta || {})}'::jsonb)`
-      )
-      .join(',')
+    // Insert chunks one by one to avoid SQL construction issues
+    for (const chunk of chunks) {
+      console.log(`Inserting chunk with ${chunk.embedding.length} dimensions`)
 
-    await client.$executeRawUnsafe(`
-      INSERT INTO "Chunk" (id, "documentId", ordinal, text, embedding, meta)
-      VALUES ${values}
-      ON CONFLICT ("documentId", ordinal) DO UPDATE SET
-        text = EXCLUDED.text,
-        embedding = EXCLUDED.embedding,
-        meta = EXCLUDED.meta
-    `)
+      await client.chunk.upsert({
+        where: {
+          documentId_ordinal: {
+            documentId: chunk.documentId,
+            ordinal: chunk.ordinal
+          }
+        },
+        create: {
+          documentId: chunk.documentId,
+          ordinal: chunk.ordinal,
+          text: chunk.text,
+          embedding: chunk.embedding,
+          meta: chunk.meta || {}
+        },
+        update: {
+          text: chunk.text,
+          embedding: chunk.embedding,
+          meta: chunk.meta || {}
+        }
+      })
+    }
   } finally {
     if (process.env.NODE_ENV === 'production') {
       await client.$disconnect()
