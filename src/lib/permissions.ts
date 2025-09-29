@@ -7,24 +7,26 @@ export interface Principals {
 }
 
 function createFreshPrismaClient() {
-  // For Supabase in Vercel, use transaction pooling mode
   const connectionUrl = process.env.DATABASE_URL
   let pooledUrl: string
 
   if (process.env.NODE_ENV === 'production') {
-    // Use Supabase transaction pooling URL for Vercel
-    pooledUrl = connectionUrl?.replace(
-      'db.zkmeikgftzqfwwhsimea.supabase.co:5432',
-      'aws-0-us-east-1.pooler.supabase.com:6543'
-    ) || connectionUrl || ''
-
-    // Add SSL and pooling parameters for production
-    if (!pooledUrl.includes('?')) {
-      pooledUrl += '?'
+    // For Supabase, we need to parse the URL and reconstruct with pooler endpoint
+    if (connectionUrl?.includes('supabase.co')) {
+      try {
+        const url = new URL(connectionUrl)
+        // Use the pooler endpoint but keep the same credentials and database
+        pooledUrl = `postgresql://${url.username}:${url.password}@aws-0-us-east-1.pooler.supabase.com:6543${url.pathname}${url.search ? url.search + '&' : '?'}pgbouncer=true&connection_limit=1&statement_cache_size=0`
+      } catch (error) {
+        console.warn('Failed to parse DATABASE_URL for pooler, using direct connection:', error)
+        pooledUrl = connectionUrl || ''
+      }
     } else {
-      pooledUrl += '&'
+      // Non-Supabase database, use as-is with pooling parameters
+      pooledUrl = connectionUrl?.includes('?')
+        ? `${connectionUrl}&pgbouncer=true&connection_limit=1&statement_cache_size=0`
+        : `${connectionUrl}?pgbouncer=true&connection_limit=1&statement_cache_size=0`
     }
-    pooledUrl += 'pgbouncer=true&connection_limit=1&statement_cache_size=0&sslmode=require'
   } else {
     // Development - use direct connection
     pooledUrl = connectionUrl || ''
