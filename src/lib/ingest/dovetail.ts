@@ -129,18 +129,30 @@ export async function fetchDovetailProjectItems(
 
     for (const dataItem of dataItems) {
       try {
+        // Skip invalid data items
+        if (!dataItem || !dataItem.id) {
+          console.warn('Skipping invalid data item:', dataItem)
+          continue
+        }
+
         // Fetch full details for each data item
         const fullData = await fetchDovetailDataDetails(dataItem.id, apiKey)
+
+        // Validate required fields
+        if (!fullData || !fullData.id || !fullData.title) {
+          console.warn('Skipping data item with missing required fields:', fullData)
+          continue
+        }
 
         const content = fullData.transcript || fullData.content || fullData.description || ''
 
         items.push({
           id: fullData.id,
           title: fullData.title,
-          url: fullData.url,
+          url: fullData.url || `https://dovetail.com/projects/${projectId}/items/${fullData.id}`,
           author: 'Research Team', // Dovetail doesn't always provide author info
-          createdAt: fullData.created_at,
-          updatedAt: fullData.updated_at,
+          createdAt: fullData.created_at || new Date().toISOString(),
+          updatedAt: fullData.updated_at || new Date().toISOString(),
           content: content,
           highlights: [] // We'll extract highlights from notes/insights separately
         })
@@ -198,42 +210,60 @@ export async function ingestDovetailData(
   }
 
   for (const item of items) {
+    // Validate item data before processing
+    if (!item || !item.id || !item.title) {
+      console.warn('Skipping invalid item:', item)
+      continue
+    }
+
+    // Sanitize the item data
+    const sanitizedItem = {
+      id: String(item.id),
+      title: String(item.title).substring(0, 500), // Limit title length
+      url: item.url || `https://dovetail.com/items/${item.id}`,
+      author: item.author || 'Research Team',
+      createdAt: item.createdAt || new Date().toISOString(),
+      updatedAt: item.updatedAt || new Date().toISOString(),
+      content: String(item.content || '').substring(0, 50000), // Limit content length
+      highlights: item.highlights || []
+    }
+
     const source = await prisma.source.upsert({
-      where: { externalId: `dovetail-${item.id}` },
+      where: { externalId: `dovetail-${sanitizedItem.id}` },
       create: {
         kind: 'dovetail',
-        externalId: `dovetail-${item.id}`,
-        name: item.title,
+        externalId: `dovetail-${sanitizedItem.id}`,
+        name: sanitizedItem.title,
         visibility: { public: true }
       },
       update: {
-        name: item.title,
+        name: sanitizedItem.title,
         visibility: { public: true }
       }
     })
 
-    const searchableText = `${item.title} ${item.content} ${(item.highlights || []).join(' ')}`
+    const searchableText = `${sanitizedItem.title} ${sanitizedItem.content} ${sanitizedItem.highlights.join(' ')}`
 
     const document = await prisma.document.upsert({
-      where: { externalId: item.id },
+      where: { externalId: sanitizedItem.id },
       create: {
         sourceId: source.id,
-        externalId: item.id,
-        title: item.title,
-        url: item.url,
-        author: item.author || 'Unknown',
-        createdAt: new Date(item.createdAt),
-        updatedAt: new Date(item.updatedAt),
+        externalId: sanitizedItem.id,
+        title: sanitizedItem.title,
+        url: sanitizedItem.url,
+        author: sanitizedItem.author,
+        createdAt: new Date(sanitizedItem.createdAt),
+        updatedAt: new Date(sanitizedItem.updatedAt),
         searchable: searchableText,
-        raw: item as any
+        raw: sanitizedItem as any
       },
       update: {
-        title: item.title,
-        url: item.url,
-        author: item.author || 'Unknown',
-        updatedAt: new Date(item.updatedAt),
+        title: sanitizedItem.title,
+        url: sanitizedItem.url,
+        author: sanitizedItem.author,
+        updatedAt: new Date(sanitizedItem.updatedAt),
         searchable: searchableText,
-        raw: item as any
+        raw: sanitizedItem as any
       }
     })
 
@@ -253,18 +283,23 @@ export async function ingestDovetailData(
       update: {}
     })
 
-    const chunks = await chunkText(item.content, item.highlights || [])
-    const embeddings = await embedBatch(chunks.map(c => c.text))
+    // Only process chunks if there's actual content
+    if (sanitizedItem.content && sanitizedItem.content.trim().length > 0) {
+      const chunks = await chunkText(sanitizedItem.content, sanitizedItem.highlights)
+      if (chunks.length > 0) {
+        const embeddings = await embedBatch(chunks.map(c => c.text))
 
-    await bulkInsertChunks(
-      chunks.map((chunk, i) => ({
-        documentId: document.id,
-        ordinal: i,
-        text: chunk.text,
-        embedding: embeddings[i],
-        meta: { type: chunk.type }
-      }))
-    )
+        await bulkInsertChunks(
+          chunks.map((chunk, i) => ({
+            documentId: document.id,
+            ordinal: i,
+            text: chunk.text,
+            embedding: embeddings[i],
+            meta: { type: chunk.type }
+          }))
+        )
+      }
+    }
   }
 
   await prisma.syncState.upsert({
