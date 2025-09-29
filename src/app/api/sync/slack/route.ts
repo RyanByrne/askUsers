@@ -27,6 +27,27 @@ export async function POST(request: NextRequest) {
         success: true,
         message: 'Synced all allowed channels'
       })
+    } else if (syncAll === false && process.env.ALLOWLIST_SLACK_CHANNELS && process.env.ALLOWLIST_SLACK_CHANNELS !== '*') {
+      // Direct sync of allowlisted channel without discovery
+      const allowlistedChannels = process.env.ALLOWLIST_SLACK_CHANNELS.split(',').map(c => c.trim())
+      console.log(`Direct sync of allowlisted channels: ${allowlistedChannels.join(', ')}`)
+
+      for (const channelId of allowlistedChannels) {
+        if (channelId) {
+          try {
+            console.log(`Directly syncing channel ${channelId}`)
+            await ingestSlackChannel(channelId, team, monthsBack)
+          } catch (error) {
+            console.error(`Error syncing channel ${channelId}:`, error)
+          }
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Directly synced ${allowlistedChannels.length} allowlisted channels`,
+        channels: allowlistedChannels
+      })
     } else if (channelIds && Array.isArray(channelIds)) {
       // Sync specific channels
       const syncPromises = channelIds.map(channelId =>

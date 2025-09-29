@@ -50,13 +50,49 @@ export async function fetchSlackChannels(teamId: string): Promise<SlackChannel[]
     })
 
     const channels = (result.channels || []) as SlackChannel[]
+
+    // Debug logging
+    console.log(`API returned ${channels.length} channels`)
+    channels.forEach(ch => {
+      console.log(`Channel: ${ch.name} (${ch.id}), is_member: ${ch.is_member}`)
+    })
+
     allChannels.push(...channels.filter(ch => ch.is_member)) // Only channels the bot is a member of
 
     if (!result.response_metadata?.next_cursor) break
     cursor = result.response_metadata.next_cursor
   }
 
-  console.log(`Found ${allChannels.length} accessible channels`)
+  console.log(`Found ${allChannels.length} accessible channels where bot is member`)
+
+  // Also try to fetch the specific channel if we have it in allowlist
+  const allowlistedChannels = process.env.ALLOWLIST_SLACK_CHANNELS?.split(',').map(c => c.trim()) || []
+  console.log(`Allowlisted channels: ${allowlistedChannels.join(', ')}`)
+
+  // If we have a specific channel ID, try to fetch it directly
+  for (const channelId of allowlistedChannels) {
+    if (channelId && channelId !== '*') {
+      try {
+        console.log(`Attempting to fetch channel info for ${channelId}`)
+        const channelInfo = await client.conversations.info({
+          channel: channelId
+        })
+
+        if (channelInfo.channel) {
+          console.log(`Successfully fetched ${channelId}: ${channelInfo.channel.name}`)
+          const existingChannel = allChannels.find(ch => ch.id === channelId)
+          if (!existingChannel) {
+            allChannels.push(channelInfo.channel as SlackChannel)
+            console.log(`Added ${channelId} to channel list`)
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching channel ${channelId}:`, error)
+      }
+    }
+  }
+
+  console.log(`Total channels after allowlist check: ${allChannels.length}`)
   return allChannels
 }
 
