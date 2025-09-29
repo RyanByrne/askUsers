@@ -11,12 +11,13 @@ function createFreshPrismaClient() {
   let pooledUrl: string
 
   if (process.env.NODE_ENV === 'production') {
-    // For Supabase, we need to parse the URL and reconstruct with pooler endpoint
+    // For Supabase, use session pooling mode (port 5432) instead of transaction mode (6543)
+    // Transaction mode doesn't work well with Prisma prepared statements
     if (connectionUrl?.includes('supabase.co')) {
       try {
         const url = new URL(connectionUrl)
-        // Use the pooler endpoint but keep the same credentials and database
-        pooledUrl = `postgresql://${url.username}:${url.password}@aws-0-us-east-1.pooler.supabase.com:6543${url.pathname}${url.search ? url.search + '&' : '?'}pgbouncer=true&connection_limit=1&statement_cache_size=0`
+        // Use session pooler endpoint with same port (5432) but pooler hostname
+        pooledUrl = `postgresql://${url.username}:${url.password}@aws-0-us-east-1.pooler.supabase.com:5432${url.pathname}${url.search ? url.search + '&' : '?'}pgbouncer=true&connection_limit=1&statement_cache_size=0`
       } catch (error) {
         console.warn('Failed to parse DATABASE_URL for pooler, using direct connection:', error)
         pooledUrl = connectionUrl || ''
