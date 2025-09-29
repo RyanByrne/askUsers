@@ -72,30 +72,33 @@ export async function bulkInsertChunks(
   const client = process.env.NODE_ENV === 'production' ? createPrismaClient() : prisma
 
   try {
-    // Insert chunks one by one to avoid SQL construction issues
-    for (const chunk of chunks) {
-      console.log(`Inserting chunk with ${chunk.embedding.length} dimensions`)
+    // Delete existing chunks for this document first, then insert new ones
+    if (chunks.length > 0) {
+      const documentId = chunks[0].documentId
+      console.log(`Deleting existing chunks for document ${documentId}`)
 
-      await client.chunk.upsert({
+      await client.chunk.deleteMany({
         where: {
-          documentId_ordinal: {
-            documentId: chunk.documentId,
-            ordinal: chunk.ordinal
-          }
-        },
-        create: {
-          documentId: chunk.documentId,
-          ordinal: chunk.ordinal,
-          text: chunk.text,
-          embedding: chunk.embedding,
-          meta: chunk.meta || {}
-        },
-        update: {
-          text: chunk.text,
-          embedding: chunk.embedding,
-          meta: chunk.meta || {}
+          documentId: documentId
         }
       })
+
+      console.log(`Inserting ${chunks.length} new chunks`)
+
+      // Insert chunks one by one to avoid SQL construction issues
+      for (const chunk of chunks) {
+        console.log(`Inserting chunk ${chunk.ordinal} with ${chunk.embedding.length} dimensions`)
+
+        await client.chunk.create({
+          data: {
+            documentId: chunk.documentId,
+            ordinal: chunk.ordinal,
+            text: chunk.text,
+            embedding: chunk.embedding,
+            meta: chunk.meta || {}
+          }
+        })
+      }
     }
   } finally {
     if (process.env.NODE_ENV === 'production') {
