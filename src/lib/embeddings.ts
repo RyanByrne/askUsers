@@ -21,7 +21,15 @@ export async function embedText(text: string): Promise<number[]> {
 
   if (redis) {
     const cached = await redis.get<number[]>(cacheKey)
-    if (cached) return cached
+    if (cached) {
+      // Check cached embedding dimensions
+      if (cached.length !== 1536) {
+        console.log(`Cached embedding has wrong dimensions (${cached.length}), regenerating...`)
+        await redis.del(cacheKey)
+      } else {
+        return cached
+      }
+    }
   }
 
   const response = await openai.embeddings.create({
@@ -31,6 +39,9 @@ export async function embedText(text: string): Promise<number[]> {
   })
 
   const embedding = response.data[0].embedding
+
+  // Debug logging for dimension issues
+  console.log(`Generated embedding dimensions: ${embedding.length} for model: ${EMBED_MODEL}`)
 
   if (redis) {
     await redis.set(cacheKey, embedding, { ex: EMBED_CACHE_TTL })

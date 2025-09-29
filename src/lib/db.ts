@@ -62,6 +62,11 @@ export async function bulkInsertChunks(
 ) {
   if (chunks.length === 0) return
 
+  // Debug logging for embedding dimensions
+  chunks.forEach((chunk, i) => {
+    console.log(`Chunk ${i}: embedding dimensions = ${chunk.embedding.length}`)
+  })
+
   const client = process.env.NODE_ENV === 'production' ? createPrismaClient() : prisma
 
   try {
