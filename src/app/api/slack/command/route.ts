@@ -43,7 +43,9 @@ async function processCommand(command: {
   responseUrl: string
   triggerId: string
 }) {
+  console.log('Starting processCommand for:', command.text)
   try {
+    console.log('Calling hybridRetrieval...')
     const chunks = await hybridRetrieval(
       command.text,
       {
@@ -53,6 +55,7 @@ async function processCommand(command: {
       },
       12
     )
+    console.log('hybridRetrieval returned', chunks.length, 'chunks')
 
     if (chunks.length === 0) {
       await fetch(command.responseUrl, {
@@ -66,10 +69,12 @@ async function processCommand(command: {
       return
     }
 
+    console.log('Generating answer...')
     const { answer, sources } = await generateAnswer(command.text, chunks)
     const slackMessage = formatSlackAnswer(answer, sources)
 
-    await fetch(command.responseUrl, {
+    console.log('Posting response to Slack...')
+    const response = await fetch(command.responseUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -77,8 +82,10 @@ async function processCommand(command: {
         ...slackMessage
       })
     })
+    console.log('processCommand completed successfully, status:', response.status)
   } catch (error) {
     console.error('Error in processCommand:', error)
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
     // Send fallback response
     await fetch(command.responseUrl, {
       method: 'POST',
