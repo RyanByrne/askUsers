@@ -14,8 +14,11 @@ function createPrismaClient() {
     if (connectionUrl?.includes('supabase.co')) {
       try {
         const url = new URL(connectionUrl)
+        // Properly encode credentials to handle special characters like @ in password
+        const encodedUsername = encodeURIComponent(url.username)
+        const encodedPassword = encodeURIComponent(url.password)
         // Use session pooler endpoint with same port (5432) but pooler hostname
-        pooledUrl = `postgresql://${url.username}:${url.password}@aws-0-us-east-1.pooler.supabase.com:5432${url.pathname}${url.search ? url.search + '&' : '?'}pgbouncer=true&connection_limit=1&statement_cache_size=0`
+        pooledUrl = `postgresql://${encodedUsername}:${encodedPassword}@aws-0-us-east-1.pooler.supabase.com:5432${url.pathname}${url.search ? url.search + '&' : '?'}pgbouncer=true&connection_limit=1&statement_cache_size=0`
       } catch (error) {
         console.warn('Failed to parse DATABASE_URL for pooler, using direct connection:', error)
         pooledUrl = connectionUrl || ''
