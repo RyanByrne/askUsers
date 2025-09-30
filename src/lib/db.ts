@@ -9,25 +9,17 @@ function createPrismaClient() {
   let pooledUrl: string
 
   if (process.env.NODE_ENV === 'production') {
-    // For Supabase, use session pooling mode (port 5432) instead of transaction mode (6543)
-    // Transaction mode doesn't work well with Prisma prepared statements
+    // For Supabase in serverless, use connection pooling parameters
+    // Use the same endpoint but add pooler query params
     if (connectionUrl?.includes('supabase.co')) {
-      try {
-        const url = new URL(connectionUrl)
-        // Properly encode credentials to handle special characters like @ in password
-        const encodedUsername = encodeURIComponent(url.username)
-        const encodedPassword = encodeURIComponent(url.password)
-        // Use session pooler endpoint with same port (5432) but pooler hostname
-        pooledUrl = `postgresql://${encodedUsername}:${encodedPassword}@aws-0-us-east-1.pooler.supabase.com:5432${url.pathname}${url.search ? url.search + '&' : '?'}pgbouncer=true&connection_limit=1&statement_cache_size=0`
-      } catch (error) {
-        console.warn('Failed to parse DATABASE_URL for pooler, using direct connection:', error)
-        pooledUrl = connectionUrl || ''
-      }
+      pooledUrl = connectionUrl?.includes('?')
+        ? `${connectionUrl}&pgbouncer=true&connection_limit=1`
+        : `${connectionUrl}?pgbouncer=true&connection_limit=1`
     } else {
       // Non-Supabase database, use as-is with pooling parameters
       pooledUrl = connectionUrl?.includes('?')
-        ? `${connectionUrl}&pgbouncer=true&connection_limit=1&statement_cache_size=0`
-        : `${connectionUrl}?pgbouncer=true&connection_limit=1&statement_cache_size=0`
+        ? `${connectionUrl}&pgbouncer=true&connection_limit=1`
+        : `${connectionUrl}?pgbouncer=true&connection_limit=1`
     }
   } else {
     // Development - use direct connection
