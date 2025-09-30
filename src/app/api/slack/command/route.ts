@@ -3,6 +3,9 @@ import { verifySlackRequest, parseSlackCommand, formatSlackAnswer } from '@/lib/
 import { hybridRetrieval } from '@/lib/retrieval'
 import { generateAnswer } from '@/lib/answer'
 
+// Set max duration to 30 seconds to allow time for retrieval + OpenAI API call
+export const maxDuration = 30
+
 export async function GET(request: NextRequest) {
   return NextResponse.json({
     error: 'Slack slash commands should use POST method, not GET. Check your Slack app configuration.',
@@ -53,7 +56,7 @@ async function processCommand(command: {
         userId: command.userId,
         channelId: command.channelId
       },
-      5  // Reduced from 12 to 5 to stay under 10s Vercel timeout
+      12  // Increased back to 12 now that we have 30s timeout
     )
     console.log('hybridRetrieval returned', chunks.length, 'chunks')
 
