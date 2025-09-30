@@ -20,16 +20,24 @@ export async function hybridRetrieval(
   principals: { teamId: string; userId: string; channelId?: string },
   limit = 12
 ): Promise<RetrievedChunk[]> {
+  console.log('[retrieval] Getting permitted document IDs...')
   const permittedDocs = await getPermittedDocumentIds(principals)
+  console.log(`[retrieval] Found ${permittedDocs.length} permitted documents`)
   if (permittedDocs.length === 0) return []
 
+  console.log('[retrieval] Running lexical shortlist...')
   const lexicalChunks = await lexicalShortlist(query, permittedDocs, 100)
+  console.log(`[retrieval] Found ${lexicalChunks.length} lexical chunks`)
 
   if (lexicalChunks.length === 0) return []
 
+  console.log('[retrieval] Generating query embedding...')
   const queryEmbedding = await embedText(query)
+  console.log('[retrieval] Reranking with vector scores...')
   const rerankedChunks = await vectorRerank(lexicalChunks, queryEmbedding)
+  console.log('[retrieval] Deduplicating with MMR...')
   const dedupedChunks = mmrDedupe(rerankedChunks, limit)
+  console.log(`[retrieval] Returning ${dedupedChunks.length} final chunks`)
 
   return dedupedChunks
 }
