@@ -89,8 +89,10 @@ async function fetchDovetailProjectNotes(projectId: string, apiKey: string): Pro
   let allNotes: DovetailDataItem[] = []
   let cursor: string | null = null
   let hasMore = true
+  let pageCount = 0
+  const MAX_PAGES = 20 // Safety limit: 20 pages × 100 notes = 2000 notes max
 
-  while (hasMore) {
+  while (hasMore && pageCount < MAX_PAGES) {
     const url = cursor
       ? `https://dovetail.com/api/v1/notes?project_id=${projectId}&cursor=${cursor}`
       : `https://dovetail.com/api/v1/notes?project_id=${projectId}`
@@ -108,16 +110,35 @@ async function fetchDovetailProjectNotes(projectId: string, apiKey: string): Pro
 
     const result = await response.json()
     const notes = result.data || []
-    allNotes = allNotes.concat(notes)
+
+    // Filter notes to only include those from the requested project
+    // The API doesn't properly filter by project_id, so we do it client-side
+    const filteredNotes = notes.filter((note: any) => {
+      const noteProjectId = note.project?.id
+      return noteProjectId === projectId
+    })
+
+    allNotes = allNotes.concat(filteredNotes)
+    pageCount++
 
     hasMore = result.page?.has_more || false
     cursor = result.page?.next_cursor || null
 
-    console.log(`Fetched ${notes.length} notes (total: ${allNotes.length}, has_more: ${hasMore})`)
+    console.log(`Page ${pageCount}: Fetched ${notes.length} notes, ${filteredNotes.length} matched project ${projectId} (total matched: ${allNotes.length})`)
+
+    // Stop if we've found enough notes from this project
+    if (filteredNotes.length === 0 && allNotes.length > 0) {
+      console.log('No more notes from this project found, stopping pagination')
+      break
+    }
 
     if (hasMore) {
       await sleep(500) // Rate limiting between pages
     }
+  }
+
+  if (pageCount >= MAX_PAGES) {
+    console.warn(`Hit page limit of ${MAX_PAGES} pages. Collected ${allNotes.length} notes for project ${projectId}`)
   }
 
   return allNotes
