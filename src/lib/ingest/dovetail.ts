@@ -50,7 +50,8 @@ interface DovetailDataItem {
   updated_at: string
   content?: string
   transcript?: string
-  type: 'interview' | 'note' | 'survey' | 'document'
+  type?: 'interview' | 'note' | 'survey' | 'document'
+  deleted?: boolean
 }
 
 interface DovetailItem {
@@ -82,28 +83,90 @@ export async function fetchDovetailProjects(apiKey: string): Promise<DovetailPro
   return data.data || data // Handle different response formats
 }
 
-async function fetchDovetailProjectData(projectId: string, apiKey: string): Promise<DovetailDataItem[]> {
-  console.log(`Fetching data for Dovetail project ${projectId}`)
+async function fetchDovetailProjectNotes(projectId: string, apiKey: string): Promise<DovetailDataItem[]> {
+  console.log(`Fetching notes for Dovetail project ${projectId}`)
 
-  const response = await rateLimitedFetch(`https://dovetail.com/api/v1/data?project_id=${projectId}`, {
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
+  let allNotes: DovetailDataItem[] = []
+  let cursor: string | null = null
+  let hasMore = true
+
+  while (hasMore) {
+    const url = cursor
+      ? `https://dovetail.com/api/v1/notes?project_id=${projectId}&cursor=${cursor}`
+      : `https://dovetail.com/api/v1/notes?project_id=${projectId}`
+
+    const response = await rateLimitedFetch(url, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`Dovetail API error for project ${projectId}: ${response.status} ${response.statusText}`)
     }
-  })
 
-  if (!response.ok) {
-    throw new Error(`Dovetail API error for project ${projectId}: ${response.status} ${response.statusText}`)
+    const result = await response.json()
+    const notes = result.data || []
+    allNotes = allNotes.concat(notes)
+
+    hasMore = result.page?.has_more || false
+    cursor = result.page?.next_cursor || null
+
+    console.log(`Fetched ${notes.length} notes (total: ${allNotes.length}, has_more: ${hasMore})`)
+
+    if (hasMore) {
+      await sleep(500) // Rate limiting between pages
+    }
   }
 
-  const data = await response.json()
-  return data.data || data
+  return allNotes
 }
 
-async function fetchDovetailDataDetails(dataId: string, apiKey: string): Promise<DovetailDataItem> {
-  console.log(`Fetching details for Dovetail data item ${dataId}`)
+async function fetchNoteHighlights(noteId: string, apiKey: string): Promise<string> {
+  console.log(`Fetching highlights for note ${noteId}`)
 
-  const response = await rateLimitedFetch(`https://dovetail.com/api/v1/data/${dataId}`, {
+  let allHighlights: Array<{ text: string }> = []
+  let cursor: string | null = null
+  let hasMore = true
+
+  while (hasMore) {
+    const url = cursor
+      ? `https://dovetail.com/api/v1/highlights?note_id=${noteId}&cursor=${cursor}`
+      : `https://dovetail.com/api/v1/highlights?note_id=${noteId}`
+
+    const response = await rateLimitedFetch(url, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      console.warn(`Could not fetch highlights for note ${noteId}: ${response.status}`)
+      return ''
+    }
+
+    const result = await response.json()
+    const highlights = result.data || []
+    allHighlights = allHighlights.concat(highlights)
+
+    hasMore = result.page?.has_more || false
+    cursor = result.page?.next_cursor || null
+
+    if (hasMore) {
+      await sleep(300) // Rate limiting between pages
+    }
+  }
+
+  // Combine all highlight texts into a single transcript
+  return allHighlights.map(h => h.text).join('\n\n')
+}
+
+async function fetchDovetailNoteDetails(noteId: string, apiKey: string): Promise<DovetailDataItem> {
+  console.log(`Fetching details for Dovetail note ${noteId}`)
+
+  const response = await rateLimitedFetch(`https://dovetail.com/api/v1/notes/${noteId}`, {
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
@@ -111,10 +174,20 @@ async function fetchDovetailDataDetails(dataId: string, apiKey: string): Promise
   })
 
   if (!response.ok) {
-    throw new Error(`Dovetail API error for data ${dataId}: ${response.status} ${response.statusText}`)
+    throw new Error(`Dovetail API error for note ${noteId}: ${response.status} ${response.statusText}`)
   }
 
-  return response.json()
+  const noteData = await response.json()
+
+  // Fetch highlights (transcript content) for this note
+  const transcript = await fetchNoteHighlights(noteId, apiKey)
+
+  // Add transcript to the note data
+  return {
+    ...noteData.data,
+    transcript,
+    content: transcript
+  }
 }
 
 export async function fetchDovetailProjectItems(
@@ -124,57 +197,61 @@ export async function fetchDovetailProjectItems(
   console.log(`Fetching Dovetail project ${projectId}`)
 
   try {
-    const dataItems = await fetchDovetailProjectData(projectId, apiKey)
+    const notes = await fetchDovetailProjectNotes(projectId, apiKey)
     const items: DovetailItem[] = []
 
-    for (const dataItem of dataItems) {
+    console.log(`Processing ${notes.length} notes from project ${projectId}`)
+
+    for (const note of notes) {
       try {
-        // Skip only completely invalid data items
-        if (!dataItem) {
-          console.warn('Skipping null/undefined data item')
+        // Skip deleted or invalid notes
+        if (!note || note.deleted) {
+          console.warn('Skipping null/undefined/deleted note')
           continue
         }
 
         // Use fallback ID if missing
-        const itemId = dataItem.id || `unknown-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        const noteId = note.id || `unknown-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
         let fullData
         try {
-          // Fetch full details for each data item
-          fullData = await fetchDovetailDataDetails(itemId, apiKey)
+          // Fetch full details and highlights for each note
+          fullData = await fetchDovetailNoteDetails(noteId, apiKey)
         } catch (error) {
-          console.warn(`Could not fetch details for ${itemId}, using basic data:`, error instanceof Error ? error.message : String(error))
-          // Use the basic data item if we can't fetch details
-          fullData = dataItem
+          console.warn(`Could not fetch details for ${noteId}, using basic data:`, error instanceof Error ? error.message : String(error))
+          // Use the basic note data if we can't fetch details
+          fullData = { ...note, transcript: '', content: '' }
         }
 
-        // Don't skip - provide fallbacks for missing fields
-        if (!fullData) {
-          console.warn('No data available, using minimal fallback')
-          fullData = { id: itemId, title: 'Untitled Item' }
-        }
-
+        // Don't skip notes without content - they'll be filtered later
         const content = fullData.transcript || fullData.content || fullData.description || ''
 
+        if (content.trim().length > 0) {
+          console.log(`Note ${noteId} has ${content.length} characters of content`)
+        } else {
+          console.warn(`Note ${noteId} has no content`)
+        }
+
         items.push({
-          id: fullData.id || itemId,
-          title: fullData.title || (fullData as any).name || 'Untitled Research Item',
-          url: fullData.url || `https://dovetail.com/projects/${projectId}/items/${fullData.id || itemId}`,
-          author: (fullData as any).author || 'Research Team', // Dovetail doesn't always provide author info
-          createdAt: fullData.created_at || (fullData as any).createdAt || new Date().toISOString(),
-          updatedAt: fullData.updated_at || (fullData as any).updatedAt || new Date().toISOString(),
+          id: fullData.id || noteId,
+          title: fullData.title || 'Untitled Note',
+          url: fullData.url || `https://dovetail.com/projects/${projectId}/notes/${fullData.id || noteId}`,
+          author: (fullData as any).author?.name || 'Research Team',
+          createdAt: fullData.created_at || new Date().toISOString(),
+          updatedAt: fullData.updated_at || fullData.created_at || new Date().toISOString(),
           content: content,
-          highlights: (fullData as any).highlights || [] // We'll extract highlights from notes/insights separately
+          highlights: []
         })
 
-        // Add small delay between data item requests
-        await sleep(500) // 500ms delay between data items
+        // Add small delay between note requests to avoid rate limiting
+        await sleep(500)
       } catch (error) {
-        console.error(`Error fetching details for data item ${dataItem.id}:`, error)
+        console.error(`Error fetching details for note ${note.id}:`, error)
         // Continue processing other items
       }
     }
 
+    console.log(`Processed ${items.length} items from project ${projectId}`)
     return items
   } catch (error) {
     console.error(`Error fetching project ${projectId}:`, error)
