@@ -84,18 +84,18 @@ export async function fetchDovetailProjects(apiKey: string): Promise<DovetailPro
 }
 
 async function fetchDovetailProjectNotes(projectId: string, apiKey: string): Promise<DovetailDataItem[]> {
-  console.log(`Fetching notes for Dovetail project ${projectId}`)
+  console.log(`Fetching notes for Dovetail (note: API doesn't filter by project, fetching recent notes)`)
 
   let allNotes: DovetailDataItem[] = []
   let cursor: string | null = null
   let hasMore = true
   let pageCount = 0
-  const MAX_PAGES = 20 // Safety limit: 20 pages × 100 notes = 2000 notes max
+  const MAX_PAGES = 5 // Fetch first 5 pages = 500 most recent notes
 
   while (hasMore && pageCount < MAX_PAGES) {
     const url = cursor
-      ? `https://dovetail.com/api/v1/notes?project_id=${projectId}&cursor=${cursor}`
-      : `https://dovetail.com/api/v1/notes?project_id=${projectId}`
+      ? `https://dovetail.com/api/v1/notes?cursor=${cursor}`
+      : `https://dovetail.com/api/v1/notes`
 
     const response = await rateLimitedFetch(url, {
       headers: {
@@ -105,41 +105,28 @@ async function fetchDovetailProjectNotes(projectId: string, apiKey: string): Pro
     })
 
     if (!response.ok) {
-      throw new Error(`Dovetail API error for project ${projectId}: ${response.status} ${response.statusText}`)
+      throw new Error(`Dovetail API error: ${response.status} ${response.statusText}`)
     }
 
     const result = await response.json()
     const notes = result.data || []
 
-    // Filter notes to only include those from the requested project
-    // The API doesn't properly filter by project_id, so we do it client-side
-    const filteredNotes = notes.filter((note: any) => {
-      const noteProjectId = note.project?.id
-      return noteProjectId === projectId
-    })
-
-    allNotes = allNotes.concat(filteredNotes)
+    // Note: The list endpoint doesn't include project field, so we can't filter
+    // We'll fetch details for each note which includes the project information
+    allNotes = allNotes.concat(notes)
     pageCount++
 
     hasMore = result.page?.has_more || false
     cursor = result.page?.next_cursor || null
 
-    console.log(`Page ${pageCount}: Fetched ${notes.length} notes, ${filteredNotes.length} matched project ${projectId} (total matched: ${allNotes.length})`)
-
-    // Stop if we've found enough notes from this project
-    if (filteredNotes.length === 0 && allNotes.length > 0) {
-      console.log('No more notes from this project found, stopping pagination')
-      break
-    }
+    console.log(`Page ${pageCount}: Fetched ${notes.length} notes (total: ${allNotes.length})`)
 
     if (hasMore) {
       await sleep(500) // Rate limiting between pages
     }
   }
 
-  if (pageCount >= MAX_PAGES) {
-    console.warn(`Hit page limit of ${MAX_PAGES} pages. Collected ${allNotes.length} notes for project ${projectId}`)
-  }
+  console.log(`Finished fetching ${allNotes.length} notes across ${pageCount} pages`)
 
   return allNotes
 }
