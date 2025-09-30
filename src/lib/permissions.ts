@@ -1,4 +1,4 @@
-import { prisma } from './db'
+import { PrismaClient } from '@prisma/client'
 
 export interface Principals {
   teamId: string
@@ -6,10 +6,42 @@ export interface Principals {
   channelId?: string
 }
 
+function createFreshPrismaClient() {
+  const connectionUrl = process.env.DATABASE_URL
+  let pooledUrl: string
+
+  if (process.env.NODE_ENV === 'production') {
+    // For Supabase serverless: add pgbouncer params to disable prepared statements
+    // The DATABASE_URL should already be using the pooler endpoint with port 6543
+    if (connectionUrl?.includes('supabase')) {
+      pooledUrl = connectionUrl?.includes('?')
+        ? `${connectionUrl}&pgbouncer=true&connection_limit=1`
+        : `${connectionUrl}?pgbouncer=true&connection_limit=1`
+    } else {
+      // Non-Supabase database
+      pooledUrl = connectionUrl || ''
+    }
+  } else {
+    // Development - use direct connection
+    pooledUrl = connectionUrl || ''
+  }
+
+  return new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    datasources: {
+      db: {
+        url: pooledUrl,
+      },
+    },
+  })
+}
+
 export async function getPermittedDocumentIds(
   principals: Principals
 ): Promise<string[]> {
-  console.log('[permissions] Checking permissions for principals:', principals)
+  // Create a fresh client for each request in production to avoid prepared statement conflicts
+  const client = process.env.NODE_ENV === 'production' ? createFreshPrismaClient() : (await import('./db')).prisma
+
   try {
     const whereConditions = [
       {
@@ -33,8 +65,7 @@ export async function getPermittedDocumentIds(
       })
     }
 
-    console.log('[permissions] Querying permissions...')
-    const permissions = await prisma.permission.findMany({
+    const permissions = await client.permission.findMany({
       where: {
         OR: whereConditions
       },
@@ -44,11 +75,12 @@ export async function getPermittedDocumentIds(
       distinct: ['documentId']
     })
 
-    console.log(`[permissions] Found ${permissions.length} documents with access`)
     return permissions.map(p => p.documentId)
-  } catch (error) {
-    console.error('[permissions] Error getting permitted documents:', error)
-    throw error
+  } finally {
+    // Disconnect fresh client in production
+    if (process.env.NODE_ENV === 'production') {
+      await client.$disconnect()
+    }
   }
 }
 
@@ -56,18 +88,26 @@ export async function setDocumentPermissions(
   documentId: string,
   permissions: Array<{ principalType: string; principalId: string }>
 ) {
-  await prisma.permission.deleteMany({
-    where: { documentId }
-  })
+  const client = process.env.NODE_ENV === 'production' ? createFreshPrismaClient() : (await import('./db')).prisma
 
-  if (permissions.length > 0) {
-    await prisma.permission.createMany({
-      data: permissions.map(p => ({
-        documentId,
-        principalType: p.principalType,
-        principalId: p.principalId
-      }))
+  try {
+    await client.permission.deleteMany({
+      where: { documentId }
     })
+
+    if (permissions.length > 0) {
+      await client.permission.createMany({
+        data: permissions.map(p => ({
+          documentId,
+          principalType: p.principalType,
+          principalId: p.principalId
+        }))
+      })
+    }
+  } finally {
+    if (process.env.NODE_ENV === 'production') {
+      await client.$disconnect()
+    }
   }
 }
 
