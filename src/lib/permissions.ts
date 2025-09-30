@@ -11,18 +11,15 @@ function createFreshPrismaClient() {
   let pooledUrl: string
 
   if (process.env.NODE_ENV === 'production') {
-    // For Supabase in serverless, use transaction pooler (port 6543)
-    // pgbouncer=true disables prepared statements for compatibility
-    if (connectionUrl?.includes('supabase.co')) {
-      const url = new URL(connectionUrl)
-      // Change port to 6543 for transaction pooler
-      url.port = '6543'
-      pooledUrl = `${url.toString()}${url.search ? '&' : '?'}pgbouncer=true&connection_limit=1`
-    } else {
-      // Non-Supabase database, use as-is with pooling parameters
+    // For Supabase serverless: add pgbouncer params to disable prepared statements
+    // The DATABASE_URL should already be using the pooler endpoint with port 6543
+    if (connectionUrl?.includes('supabase')) {
       pooledUrl = connectionUrl?.includes('?')
         ? `${connectionUrl}&pgbouncer=true&connection_limit=1`
         : `${connectionUrl}?pgbouncer=true&connection_limit=1`
+    } else {
+      // Non-Supabase database
+      pooledUrl = connectionUrl || ''
     }
   } else {
     // Development - use direct connection
