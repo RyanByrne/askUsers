@@ -53,7 +53,7 @@ async function processCommand(command: {
         userId: command.userId,
         channelId: command.channelId
       },
-      12
+      5  // Reduced from 12 to 5 to stay under 10s Vercel timeout
     )
     console.log('hybridRetrieval returned', chunks.length, 'chunks')
 
